@@ -25,7 +25,7 @@ export function init() {
 function onMIDISuccess(midiAccess) {
     for (var input of midiAccess.inputs.values()) {
         input.onmidimessage = onMIDIMessage
-        console.log(input)
+        console.log("MIDI input: ", input.name)
     }
 }
 
@@ -34,7 +34,6 @@ function onMIDIFailure() {
 }
 
 function onMIDIMessage(midiMessage) {
-    console.log(midiMessage)
     switch( midiMessage.data[0] ) {      
         case 144: {  // note on
             const keyId = midiMessage.data[1] - 21
@@ -46,18 +45,21 @@ function onMIDIMessage(midiMessage) {
             releaseKey(keyId)
             break
         }
+        default: {
+            console.log(midiMessage)
+        }
     }
 }
 
 
 function pressKey(keyId) {
-    key = keyProps[keyId]
+    var key = keyProps[keyId]
     key['svg'].attr('fill', '#578')
 }
 
 
 function releaseKey(keyId) {
-    key = keyProps[keyId]
+    var key = keyProps[keyId]
     key['svg'].attr('fill', key['color'])
 }
 

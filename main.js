@@ -8,6 +8,9 @@ var waterfall
 var noteGroup
 var playHead = 0
 var lastUpdateTime
+var playTimer
+var isPlaying = false
+
 
 export function init() {
     rootSvg = $("svg")[0]
@@ -30,21 +33,45 @@ export function init() {
     loadFile('arabesque.mid')
 
     play()
+
+    $(document).keydown(onKeyDown)    
 }
 
 
-// function loadFile(filename) {
-//     const text = $.ajax('arabesque.mid', {async: false}).responseText
-//     const bytes = new TextEncoder().encode(text)
-//     const arr = text.split('')
-//     var data = parseMidi(arr)
- 
-// }
+
+function onKeyDown(evt) {
+    if( evt.key == " " ) {
+        pause()
+    }
+    else {
+        console.log(evt)
+    }
+}
+
+
 
 function play() {
     lastUpdateTime = performance.now()
-    setInterval(updateTime, 16)
+    playTimer = setInterval(updateTime, 16)
+    isPlaying = true
 }
+
+
+function stop() {
+    clearInterval(playTimer)
+    isPlaying = false
+}
+
+
+function pause() {
+    if( isPlaying ) {
+        stop()
+    }
+    else {
+        play()
+    }
+}
+
 
 
 function updateTime() {
@@ -69,48 +96,69 @@ function onFileLoaded(event) {
     var byteArray = new Uint8Array(arrayBuffer)
     var midi = parseMidi(byteArray)
     console.log(midi)
+
+    // merge tracks to make timing easier to compute
+    var mergedTracks = []
+    for( let [trackIndex, track] of midi.tracks.entries() ) {
+        let time = 0
+        for( let midiEvent of track ) {
+            time += midiEvent.deltaTime
+            midiEvent['ticks'] = time
+            midiEvent['track'] = trackIndex
+            mergedTracks.push(midiEvent)
+        }
+    }
+    mergedTracks.sort(function(a, b){return a['ticks'] - b['ticks']})
+    midi['mergedTracks'] = mergedTracks
+
     showMidi(midi)
 }
+
 
 function showMidi(midi) {
 
     const ticksPerBeat = midi.header.ticksPerBeat
-    for( let track of midi.tracks ) {
-        let rectsOn = {}
-        let time = 0
-        let microsecondsPerBeat = 0
-        for( let note of track ) {
-            time += note.deltaTime * microsecondsPerBeat * 1e-6 / ticksPerBeat
-            if( note.type == 'setTempo' ) {
-                microsecondsPerBeat = note.microsecondsPerBeat
+
+    const colors = ['#0A6', '#079']
+
+    let microsecondsPerBeat = 0
+
+    let rectsOn = {}
+    let time = 0
+    let lastTicks = 0
+    for( let midiEvent of midi['mergedTracks'] ) {
+        let deltaTicks = midiEvent['ticks'] - lastTicks
+        lastTicks = midiEvent['ticks']
+        time += deltaTicks * microsecondsPerBeat * 1e-6 / ticksPerBeat
+        if( midiEvent.type == 'setTempo' ) {
+            microsecondsPerBeat = midiEvent.microsecondsPerBeat
+        }
+        else if( midiEvent.type == 'noteOn') {
+            if( midiEvent.noteNumber in rectsOn ) {
+                continue
             }
-            else if( note.type == 'noteOn') {
-                if( note.noteNumber in rectsOn ) {
-                    continue
-                }
-                const keyId = note.noteNumber - 21
-                if(! (keyId in keyProps)) {
-                    continue
-                }
-                let keyProp = keyProps[keyId]
-                let rect = noteGroup.rect(keyProp.width, 1).x(keyProp.xPos).y(time)
-                rect.attr({
-                    'fill': '#056',
-                    'rx': .2, 
-                    'ry': .05,
-                    'stroke': '#999', 
-                    'vector-effect': 'non-scaling-stroke', 
-                })
-                rectsOn[note.noteNumber] = rect
-            } 
-            else if( note.type == 'noteOff') {
-                if( ! (note.noteNumber in rectsOn) ) {
-                    continue
-                }
-                let rect = rectsOn[note.noteNumber] 
-                rect.height(time - rect.y())
-                delete rectsOn[note.noteNumber]
+            const keyId = midiEvent.noteNumber - 21
+            if(! (keyId in keyProps)) {
+                continue
             }
+            let keyProp = keyProps[keyId]
+            let rect = noteGroup.rect(keyProp.width, 1).x(keyProp.xPos).y(time)
+            rect.attr({
+                'fill': colors[midiEvent['track']],
+                'rx': .2, 
+                'ry': .05,
+                'stroke': '#999', 
+                'vector-effect': 'non-scaling-stroke', 
+            })
+            rectsOn[midiEvent.noteNumber] = rect
+        } 
+        else if( midiEvent.type == 'noteOff') {
+            if( ! (midiEvent.noteNumber in rectsOn) ) {
+                continue
+            }
+            let rect = rectsOn[midiEvent.noteNumber] 
+            rect.height(time - rect.y())
+            delete rectsOn[midiEvent.noteNumber]
         }
     }
 }

@@ -10,6 +10,8 @@
   "license": "ISC",
   "dependencies": {
     "@svgdotjs/svg.js": "^3.1.2",
+    "@tonejs/midi": "^2.0.28",
+    "browserify": "^17.0.0",
     "jquery": "^3.6.0"
   }
 }

@@ -5,20 +5,114 @@ var keyProps = []
 var rootSvg
 var keyboard
 var waterfall
+var noteGroup
+var playHead = 0
+var lastUpdateTime
 
 export function init() {
     rootSvg = $("svg")[0]
+    // waterfall.rect(88, 1000).x(0).y(0).attr({'stroke': '#0000', 'fill': '#000'})
+
+
     keyboard = makeKeyboard()
     keyboard.addTo(rootSvg)
 
     waterfall = SVG().addTo(rootSvg).x(0).y(0)
     waterfall.attr({'viewBox': '0 0 88 10', 'preserveAspectRatio': 'none'})
-    waterfall.rect(88, 10).x(0).y(0).attr({'stroke': '#0000', 'fill': '#000'})
+    noteGroup = waterfall.group()
+    noteGroup.transform({scale: [1, -1], translate: [0, 5]})
 
     $(window).resize(onResize)
     onResize()
 
     navigator.requestMIDIAccess().then(onMIDISuccess, onMIDIFailure)
+
+    loadFile('arabesque.mid')
+
+    play()
+}
+
+
+// function loadFile(filename) {
+//     const text = $.ajax('arabesque.mid', {async: false}).responseText
+//     const bytes = new TextEncoder().encode(text)
+//     const arr = text.split('')
+//     var data = parseMidi(arr)
+ 
+// }
+
+function play() {
+    lastUpdateTime = performance.now()
+    setInterval(updateTime, 16)
+}
+
+
+function updateTime() {
+    var dt = performance.now() - lastUpdateTime
+    lastUpdateTime = performance.now()
+    playHead += dt / 1000
+    // noteGroup.transform({scale: [1, -1], translate: [0, 5]})
+    waterfall.attr({viewBox: [0, -playHead, 88, 10]})
+}
+
+
+function loadFile(url) {
+    var oReq = new XMLHttpRequest()
+    oReq.onload = onFileLoaded
+    oReq.open("GET", url, true)
+    oReq.responseType = "arraybuffer"
+    oReq.send()
+}
+
+function onFileLoaded(event) {
+    var arrayBuffer = event.currentTarget.response
+    var byteArray = new Uint8Array(arrayBuffer)
+    var midi = parseMidi(byteArray)
+    console.log(midi)
+    showMidi(midi)
+}
+
+function showMidi(midi) {
+
+    const ticksPerBeat = midi.header.ticksPerBeat
+    for( let track of midi.tracks ) {
+        let rectsOn = {}
+        let time = 0
+        let microsecondsPerBeat = 0
+        for( let note of track ) {
+            time += note.deltaTime * microsecondsPerBeat * 1e-6 / ticksPerBeat
+            if( note.type == 'setTempo' ) {
+                microsecondsPerBeat = note.microsecondsPerBeat
+            }
+            else if( note.type == 'noteOn') {
+                if( note.noteNumber in rectsOn ) {
+                    continue
+                }
+                const keyId = note.noteNumber - 21
+                if(! (keyId in keyProps)) {
+                    continue
+                }
+                let keyProp = keyProps[keyId]
+                let rect = noteGroup.rect(keyProp.width, 1).x(keyProp.xPos).y(time)
+                rect.attr({
+                    'fill': '#056',
+                    'rx': .2, 
+                    'ry': .05,
+                    'stroke': '#999', 
+                    'vector-effect': 'non-scaling-stroke', 
+                })
+                rectsOn[note.noteNumber] = rect
+            } 
+            else if( note.type == 'noteOff') {
+                if( ! (note.noteNumber in rectsOn) ) {
+                    continue
+                }
+                let rect = rectsOn[note.noteNumber] 
+                rect.height(time - rect.y())
+                delete rectsOn[note.noteNumber]
+            }
+        }
+    }
 }
 
 

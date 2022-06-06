@@ -3,13 +3,14 @@
 <html>
     <head>
         <script src="node_modules/jquery/dist/jquery.js"></script>
+        <script src="node_modules/midi-file/lib/midi-parser.js"></script>
         <script type="module">
             import {init} from "./main.js";
             $(document).ready(init);
 
         </script>
     </head>
-    <body style="margin: 0; overflow: hidden">
+    <body style="margin: 0; overflow: hidden; background-color: #000">
         <svg height="100%" width="100%" style="margin: 0px;" name="main_svg"></svg>
     </body>
 </html>

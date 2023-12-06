@@ -58,41 +58,59 @@ class View(QtWidgets.QGraphicsView):
         """Load a MIDI file and display it on the waterfall"""
         import mido
         midi = mido.MidiFile(filename)
+        assert midi.type in (0, 1)
 
-        time_counter = 0  # To keep track of the time
-        # Assume 120 beats per minute if not specified
-        tempo = 500000
-
-        # iterate over tracks, collect all events in chronological order
-        events = {}  # {time: [msg, msg, ...]}
+        messages = []
         for i, track in enumerate(midi.tracks):
+            # create a dict for each message that contains the absolute tick count
+            # and the message itself
+            ticks = 0
+            prev_track_msg = None
             for msg in track:
-                dt = mido.tick2second(msg.time, midi.ticks_per_beat, tempo)
-                time_counter += dt
-                if time_counter not in events:
-                    events[time_counter] = []
-                events[time_counter].append(msg)
+                ticks += msg.time
+                messages.append({'ticks': ticks, 'midi': msg, 'track': track, 'track_n': i, 'prev_track_msg': prev_track_msg})
+                prev_track_msg = messages[-1]
 
-        # iterate over events, update current_notes and notes
+        # sort messages by tick
+        messages = sorted(messages, key=lambda m: m['ticks'])
+
+        # calculate absolute time of each message, accounting for tempo changes that affect all tracks
+        tempo = 500000
+        ticks_per_beat = midi.ticks_per_beat
+        for msg in messages:
+            last_msg = msg['prev_track_msg']
+            last_msg_time = 0 if last_msg is None else last_msg['time']
+            if msg['midi'].type == 'set_tempo':
+                tempo = msg['midi'].tempo
+            dt = mido.tick2second(msg['midi'].time, ticks_per_beat, tempo)
+            msg['time'] = last_msg_time + dt
+
+        # collapse note_on / note_off messages into a single event with duration
         current_notes = {}  # To store the notes currently being played
         notes = []  # Store the complete notes
-        for time in sorted(events.keys()):
-            for msg in events[time]:
-                if msg.type == 'note_on' and msg.velocity > 0:
-                    note_dict = {'start_time': time, 'pitch': msg.note, 'duration': None, 'track': msg.channel}
-                    notes.append(note_dict)
-                    if msg.note in current_notes:
-                        # end previous note here
-                        prev_note = current_notes[msg.note]
-                        prev_note['duration'] = time - prev_note['start_time']                        
-                    current_notes[msg.note] = note_dict
-                elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
-                    note_end = time
-                    note_start = current_notes[msg.note]['start_time']
-                    current_notes[msg.note]['duration'] = note_end - note_start
-                    del current_notes[msg.note]
-                elif msg.type == 'set_tempo':
-                    tempo = msg.tempo
+        for message in messages:
+            msg = message['midi']
+            msg_time = message['time']
+            if msg.type == 'note_on' and msg.velocity > 0:
+                note_dict = {
+                    'start_time': msg_time, 'pitch': msg.note, 'duration': None, 
+                    'track': message['track'], 'track_n': message['track_n'],
+                    'on_msg': message, 'off_msg': None
+                }
+                notes.append(note_dict)
+                if msg.note in current_notes:
+                    # end previous note here
+                    prev_note = current_notes[msg.note]
+                    prev_note['duration'] = msg_time - prev_note['start_time']
+                current_notes[msg.note] = note_dict
+            elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
+                if msg.note not in current_notes:
+                    continue
+                note_end = msg_time
+                note_start = current_notes[msg.note]['start_time']
+                current_notes[msg.note]['duration'] = note_end - note_start
+                current_notes[msg.note]['off_msg'] = msg
+                del current_notes[msg.note]
 
         self.waterfall.set_notes(notes)
         self.window().setWindowTitle(filename)
@@ -216,7 +234,7 @@ class NotesItem(GraphicsItemGroup):
         }
         for note in notes:
             note_item = RectItem(note['pitch'], note['start_time'], 1, note['duration'], 
-                                 pen=(255, 255, 255), brush=brushes[note['track']])
+                                 pen=(255, 255, 255), brush=brushes[note['track_n']])
             self.notes.append(note_item)
             self.addToGroup(note_item)
 

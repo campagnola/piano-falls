@@ -171,8 +171,9 @@ class Waterfall(QtWidgets.QGraphicsWidget):
 
     def update_transform(self):
         transform = QtGui.QTransform()
+        transform.translate(0, self.geometry().height())
         transform.scale(1, -self.zoom_factor)
-        transform.translate(0, -self.geometry().height() - self.current_time)
+        transform.translate(0, -self.current_time)
         self.group.setTransform(transform)
         
     def scroll_down(self):
@@ -217,6 +218,10 @@ class NotesItem(GraphicsItemGroup):
         super().__init__()
         self.notes = []
         self.key_spec = Keyboard.key_spec()
+        # self.bars = [QtWidgets.QGraphicsLineItem(self.key_spec[0]['x_pos'], 0, self.key_spec[-1]['x_pos'] + self.key_spec[-1]['width'], 0)]
+        # for item in self.bars:
+        #     item.setPen(Pen(100, 100, 100))
+        #     self.addToGroup(item)
 
     def set_notes(self, notes):
         # Clear any existing notes

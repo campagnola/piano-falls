@@ -163,7 +163,6 @@ class Waterfall(QtWidgets.QGraphicsWidget):
 
     def set_time(self, time):
         self.current_time = time
-        self.group.setPos(0, self.geometry().height() + time)
         self.update_transform()
 
     def zoom(self, factor):

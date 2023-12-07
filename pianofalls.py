@@ -1,3 +1,4 @@
+import math
 from time import perf_counter
 from qtpy import QtWidgets, QtGui, QtCore
 
@@ -45,7 +46,7 @@ class View(QtWidgets.QGraphicsView):
         self.waterfall.scroll(delta / 20)
 
     def keyPressEvent(self, event):
-        if event.key() == QtCore.Qt.Key_Plus:
+        if event.key() == QtCore.Qt.Key_Equal:
             self.waterfall.zoom(1.1)
         elif event.key() == QtCore.Qt.Key_Minus:
             self.waterfall.zoom(0.9)
@@ -110,7 +111,11 @@ class View(QtWidgets.QGraphicsView):
                 current_notes[msg.note]['off_msg'] = msg
                 del current_notes[msg.note]
 
+        # filter out empty notes
+        notes = [n for n in notes if n['duration'] > 0]
+
         self.waterfall.set_notes(notes)
+        self.notes = notes
         self.window().setWindowTitle(filename)
 
     def load_musicxml(self, filename):
@@ -338,13 +343,24 @@ class Color(QtGui.QColor):
 
 
 class RectItem(QtWidgets.QGraphicsPolygonItem):
-    def __init__(self, x, y, w, h, pen, brush, radius=3, z=0):
-        self.poly = QtGui.QPolygonF([
-            QtCore.QPointF(x, y),
-            QtCore.QPointF(x + w, y),
-            QtCore.QPointF(x + w, y + h),
-            QtCore.QPointF(x, y + h),            
-        ])
+    def __init__(self, x, y, w, h, pen, brush, radius=0.1, radius_steps=4, z=0):
+        corners = [
+            [x+radius, y+radius], 
+            [x+w-radius, y+radius], 
+            [x+w-radius, y+h-radius], 
+            [x+radius, y+h-radius]
+        ]
+        points = []
+        for i, corner in enumerate(corners):
+            start_angle = math.pi * (i / 2 - 1)
+            stop_angle = math.pi * (i / 2 - 0.5)
+            d_angle = (stop_angle - start_angle) / (radius_steps - 1)
+            for j in range(radius_steps):
+                angle = start_angle + j * d_angle
+                x = corner[0] + radius * math.cos(angle)
+                y = corner[1] + radius * math.sin(angle)
+                points.append(QtCore.QPointF(x, y))
+        self.poly = QtGui.QPolygonF(points)
         super().__init__(self.poly)
         self.setPen(Pen(pen))
         self.setBrush(Brush(brush))

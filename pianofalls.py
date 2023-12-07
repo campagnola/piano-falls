@@ -17,6 +17,7 @@ class View(QtWidgets.QGraphicsView):
         self.setTransformationAnchor(QtWidgets.QGraphicsView.ViewportAnchor.NoAnchor)
         self.setResizeAnchor(QtWidgets.QGraphicsView.ViewportAnchor.AnchorViewCenter)
         self.setViewportUpdateMode(QtWidgets.QGraphicsView.ViewportUpdateMode.MinimalViewportUpdate)
+        self.setRenderHints(QtGui.QPainter.Antialiasing)
 
         self.keys = []
         self.items = []
@@ -144,7 +145,7 @@ class Waterfall(QtWidgets.QGraphicsWidget):
         self.group.addToGroup(self.notes_item)
 
         self.current_time = 0.0
-        self.zoom_factor = 1.0
+        self.zoom_factor = 10.0
 
         self.scroll_speed = 1.0
         self.scroll_start_time = None
@@ -231,7 +232,7 @@ class NotesItem(GraphicsItemGroup):
         self.notes.clear()
 
         # Create new notes
-        brushes = {
+        colors = {
             0: (100, 100, 255),
             1: (100, 255, 100),
             2: (255, 100, 100),
@@ -241,8 +242,8 @@ class NotesItem(GraphicsItemGroup):
         }
         for note in notes:
             keyspec = self.key_spec[note['pitch'].key]
-            note_item = RectItem(keyspec['x_pos'], note['start_time'], keyspec['width'], note['duration'], 
-                                 pen=None, brush=brushes[note['track_n']])
+            note_item = NoteItem(keyspec['x_pos'], note['start_time'], keyspec['width'], note['duration'], 
+                                 color=colors[note['track_n']])
             self.notes.append(note_item)
             self.addToGroup(note_item)
 
@@ -253,16 +254,7 @@ class Keyboard(QtWidgets.QGraphicsWidget):
         self.keys = self.key_spec()
         for key in self.keys:
             key['pressed'] = False
-            key['item'] = RectItem(
-                x=key['x_pos'], 
-                y=-0.1, 
-                w=key['width'], 
-                h=10.1 * key['height'],
-                brush=key['color'],
-                pen=(0, 0, 0),
-                radius=0.2,
-                z=10 if key['is_black_key'] else 0,
-            )
+            key['item'] = KeyItem(key)
             key['item'].setParentItem(self)
 
     @staticmethod
@@ -314,32 +306,79 @@ class Pitch:
 
 
 class Pen(QtGui.QPen):
-    def __init__(self, r, g=None, b=None):
-        if isinstance(r, tuple):
-            r, g, b = r
-        if r is None:
-            super().__init__(QtCore.Qt.PenStyle.NoPen)
-        else:
-            super().__init__(QtGui.QColor(r, g, b))
+    def __init__(self, arg):
+        if isinstance(arg, tuple):
+            arg = Color(arg)
+        elif arg is None:
+            arg = QtCore.Qt.PenStyle.NoPen
+        super().__init__(arg)        
         self.setCosmetic(True)
 
 
 class Brush(QtGui.QBrush):
-    def __init__(self, r, g=None, b=None):
-        if isinstance(r, tuple):
-            r, g, b = r
-        if r is None:
-            super().__init__(QtCore.Qt.BrushStyle.NoBrush)
-        else:
-            super().__init__(QtGui.QColor(r, g, b))
+    def __init__(self, arg):
+        if isinstance(arg, tuple):
+            arg = Color(arg)
+        elif arg is None:
+            arg = QtCore.Qt.BrushStyle.NoBrush
+        super().__init__(arg)        
 
 
-class RectItem(QtWidgets.QGraphicsRectItem):
-    def __init__(self, x, y, w, h, pen, brush, radius=0, z=0):
-        super().__init__(x, y, w, h)
+class Color(QtGui.QColor):
+    def __init__(self, arg):
+        super().__init__(QtGui.QColor(*arg))
+
+    def __mul__(self, x):
+        return Color((
+            int(self.red() * x),
+            int(self.green() * x),
+            int(self.blue() * x),
+            self.alpha(),
+        ))
+
+
+class RectItem(QtWidgets.QGraphicsPolygonItem):
+    def __init__(self, x, y, w, h, pen, brush, radius=3, z=0):
+        self.poly = QtGui.QPolygonF([
+            QtCore.QPointF(x, y),
+            QtCore.QPointF(x + w, y),
+            QtCore.QPointF(x + w, y + h),
+            QtCore.QPointF(x, y + h),            
+        ])
+        super().__init__(self.poly)
         self.setPen(Pen(pen))
         self.setBrush(Brush(brush))
         self.setZValue(z)
+
+
+class NoteItem(RectItem):
+    def __init__(self, x, y, w, h, color):
+        self.grad = QtGui.QLinearGradient(QtCore.QPointF(0, 0), QtCore.QPointF(0, h))
+        self.grad.setCoordinateMode(QtGui.QGradient.CoordinateMode.ObjectMode)
+        color = Color(color)
+        self.grad.setColorAt(0, Color((255, 255, 255)))
+        self.grad.setColorAt(.05, color)
+        self.grad.setColorAt(1, color * 0.5)
+        super().__init__(
+            x, y, w, h, 
+            pen=(100, 100, 100, 100),
+            brush=self.grad,
+        )
+
+
+class KeyItem(RectItem):
+    def __init__(self, key):
+        super().__init__(
+            x=key['x_pos'], 
+            y=-0.1, 
+            w=key['width'], 
+            h=10.1 * key['height'],
+            brush=key['color'],
+            pen=(0, 0, 0),
+            radius=0.2,
+            z=10 if key['is_black_key'] else 0,
+        )
+
 
 
 if __name__ == '__main__':

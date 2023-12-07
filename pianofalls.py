@@ -41,10 +41,7 @@ class View(QtWidgets.QGraphicsView):
 
     def wheelEvent(self, event):
         delta = event.angleDelta().y()
-        if delta < 0:
-            self.waterfall.scroll(1)
-        else:
-            self.waterfall.scroll(-1)
+        self.waterfall.scroll(delta / 20)
 
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Plus:
@@ -93,7 +90,7 @@ class View(QtWidgets.QGraphicsView):
             msg_time = message['time']
             if msg.type == 'note_on' and msg.velocity > 0:
                 note_dict = {
-                    'start_time': msg_time, 'pitch': msg.note, 'duration': None, 
+                    'start_time': msg_time, 'pitch': Pitch(midi_note=msg.note), 'duration': None, 
                     'track': message['track'], 'track_n': message['track_n'],
                     'on_msg': message, 'off_msg': None
                 }
@@ -146,9 +143,8 @@ class Waterfall(QtWidgets.QGraphicsWidget):
         self.notes_item = NotesItem()
         self.group.addToGroup(self.notes_item)
 
-        self.group.setTransform(QtGui.QTransform(1, 0, 0, -1, 0, 0))
-
         self.current_time = 0.0
+        self.zoom_factor = 1.0
 
         self.scroll_speed = 1.0
         self.scroll_start_time = None
@@ -156,22 +152,28 @@ class Waterfall(QtWidgets.QGraphicsWidget):
         self.scroll_timer = QtCore.QTimer()
         self.scroll_timer.timeout.connect(self.scroll_down)
         self.scrolling = False
-        # self.zoom(-1)
+
+        self.update_transform()
 
     def set_notes(self, notes):
         self.notes_item.set_notes(notes)
         
     def scroll(self, amount):
-        self.set_time(self.current_time + amount)
+        self.set_time(self.current_time + amount / self.zoom_factor)
 
     def set_time(self, time):
         self.current_time = time
         self.group.setPos(0, self.geometry().height() + time)
+        self.update_transform()
 
     def zoom(self, factor):
-        # Only scale the y-axis
-        transform = self.group.transform()
-        transform.scale(1, factor)
+        self.zoom_factor *= factor
+        self.update_transform()
+
+    def update_transform(self):
+        transform = QtGui.QTransform()
+        transform.scale(1, -self.zoom_factor)
+        transform.translate(0, -self.geometry().height() - self.current_time)
         self.group.setTransform(transform)
         
     def scroll_down(self):
@@ -182,7 +184,7 @@ class Waterfall(QtWidgets.QGraphicsWidget):
         if self.scrolling:
             self.scroll_timer.stop()
         else:
-            self.scroll_timer.start(1000/60)  # Update at 60Hz
+            self.scroll_timer.start(1000//60)  # Update at 60Hz
             self.scroll_offset = self.current_time
             self.scroll_start_time = perf_counter()
         self.scrolling = not self.scrolling
@@ -215,6 +217,7 @@ class NotesItem(GraphicsItemGroup):
     def __init__(self):
         super().__init__()
         self.notes = []
+        self.key_spec = Keyboard.key_spec()
 
     def set_notes(self, notes):
         # Clear any existing notes
@@ -233,8 +236,9 @@ class NotesItem(GraphicsItemGroup):
             5: (100, 255, 255),            
         }
         for note in notes:
-            note_item = RectItem(note['pitch'], note['start_time'], 1, note['duration'], 
-                                 pen=(255, 255, 255), brush=brushes[note['track_n']])
+            keyspec = self.key_spec[note['pitch'].key]
+            note_item = RectItem(keyspec['x_pos'], note['start_time'], keyspec['width'], note['duration'], 
+                                 pen=None, brush=brushes[note['track_n']])
             self.notes.append(note_item)
             self.addToGroup(note_item)
 
@@ -242,7 +246,24 @@ class NotesItem(GraphicsItemGroup):
 class Keyboard(QtWidgets.QGraphicsWidget):
     def __init__(self):
         super().__init__()
+        self.keys = self.key_spec()
+        for key in self.keys:
+            key['pressed'] = False
+            key['item'] = RectItem(
+                x=key['x_pos'], 
+                y=-0.1, 
+                w=key['width'], 
+                h=10.1 * key['height'],
+                brush=key['color'],
+                pen=(0, 0, 0),
+                radius=0.2,
+                z=10 if key['is_black_key'] else 0,
+            )
+            key['item'].setParentItem(self)
 
+    @staticmethod
+    def key_spec():
+        """Generate a list of dicts describing the shape and location of piano keys."""
         width = 88
         height = 0.114 * width
         white_key_width = 88 / 52
@@ -250,7 +271,7 @@ class Keyboard(QtWidgets.QGraphicsWidget):
         black_key_offset = 3.5 * white_key_width - 5.5 * black_key_width
         white_key_index = 0
         black_key_index = 0
-        self.keys = []
+        keys = []
 
         for key_id in range(88):
             is_black_key = (key_id % 12) in [1, 4, 6, 9, 11]
@@ -261,6 +282,7 @@ class Keyboard(QtWidgets.QGraphicsWidget):
                     'width': black_key_width,
                     'color': (0, 0, 0),
                     'sub_index': black_key_index,
+                    'is_black_key': True,
                 }
             else:
                 key = {
@@ -269,25 +291,22 @@ class Keyboard(QtWidgets.QGraphicsWidget):
                     'width': white_key_width,
                     'color': (255, 255, 255),
                     'sub_index': white_key_index,
+                    'is_black_key': False,
                 }
             key['key_id'] = key_id
-            key['pressed'] = False
-            key['item'] = RectItem(
-                x=key['x_pos'], 
-                y=-0.1, 
-                w=key['width'], 
-                h=10.1 * key['height'],
-                brush=key['color'],
-                pen=(0, 0, 0),
-                radius=0.2,
-                z=10 if is_black_key else 0,
-            )
-            key['item'].setParentItem(self)
-            self.keys.append(key)
+            keys.append(key)
             if is_black_key:
                 black_key_index += 1
             else:
                 white_key_index += 1
+        return keys
+
+
+class Pitch:
+    def __init__(self, midi_note):
+        self.midi_note = midi_note
+        self.key = midi_note - 21
+    
 
 
 class Pen(QtGui.QPen):
@@ -295,7 +314,7 @@ class Pen(QtGui.QPen):
         if isinstance(r, tuple):
             r, g, b = r
         if r is None:
-            super().__init__(QtGui.QPen.NoPen)
+            super().__init__(QtCore.Qt.PenStyle.NoPen)
         else:
             super().__init__(QtGui.QColor(r, g, b))
         self.setCosmetic(True)
@@ -306,7 +325,7 @@ class Brush(QtGui.QBrush):
         if isinstance(r, tuple):
             r, g, b = r
         if r is None:
-            super().__init__(QtGui.QPen.NoBrush)
+            super().__init__(QtCore.Qt.BrushStyle.NoBrush)
         else:
             super().__init__(QtGui.QColor(r, g, b))
 

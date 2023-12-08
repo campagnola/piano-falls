@@ -1,6 +1,16 @@
+import sys
 import math
+import queue
+import threading
 from time import perf_counter
+import time
 from qtpy import QtWidgets, QtGui, QtCore
+
+
+def excepthook(type, value, traceback):
+    sys.__excepthook__(type, value, traceback)
+
+sys.excepthook = excepthook
 
 
 class View(QtWidgets.QGraphicsView):
@@ -45,13 +55,60 @@ class View(QtWidgets.QGraphicsView):
         delta = event.angleDelta().y()
         self.waterfall.scroll(delta / 20)
 
-    def keyPressEvent(self, event):
-        if event.key() == QtCore.Qt.Key_Equal:
-            self.waterfall.zoom(1.1)
-        elif event.key() == QtCore.Qt.Key_Minus:
-            self.waterfall.zoom(0.9)
-        elif event.key() == QtCore.Qt.Key_Space:
-            self.waterfall.toggle_scroll()
+    def set_notes(self, notes):
+        self.waterfall.set_notes(notes)
+        self.notes = notes
+        self.resizeEvent()
+
+    def connect_midi_input(self, midi_input):
+        midi_input.message.connect(self.on_midi_message)
+
+    def on_midi_message(self, midi_input, msg):
+        self.keyboard.midi_message(msg)
+
+
+class CtrlPanel(QtWidgets.QWidget):
+    speed_changed = QtCore.Signal(float)
+
+    def __init__(self):
+        super().__init__()
+        self.layout = QtWidgets.QHBoxLayout()
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(self.layout)
+
+        self.load_button = QtWidgets.QPushButton('Load')
+        self.layout.addWidget(self.load_button)
+
+        self.speed_label = QtWidgets.QLabel('Speed:')
+        self.layout.addWidget(self.speed_label)
+        self.speed_spin = QtWidgets.QSpinBox(
+            minimum=1, maximum=1000, singleStep=10, value=100, suffix='%'
+        )
+        self.layout.addWidget(self.speed_spin)
+
+        self.load_button.clicked.connect(self.on_load)
+        self.speed_spin.valueChanged.connect(self.on_speed_changed)
+
+    def on_load(self):
+        filename, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Open File', '', 'MIDI Files (*.mid);;MusicXML Files (*.xml)')
+        self.window().load(filename)
+
+    def on_speed_changed(self, value):
+        self.speed_changed.emit(value / 100)
+        
+
+class MainWindow(QtWidgets.QWidget):
+    def __init__(self):
+        super().__init__()
+        self.layout = QtWidgets.QVBoxLayout()
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.view = View()
+        self.ctrl_panel = CtrlPanel()
+        self.layout.addWidget(self.ctrl_panel)
+        self.layout.addWidget(self.view)
+        self.setLayout(self.layout)
+        self.view.focusWidget()
+        self.ctrl_panel.speed_changed.connect(self.view.waterfall.set_scroll_speed)
 
     def load_midi(self, filename):
         """Load a MIDI file and display it on the waterfall"""
@@ -113,11 +170,7 @@ class View(QtWidgets.QGraphicsView):
 
         # filter out empty notes
         notes = [n for n in notes if n['duration'] > 0]
-
-        self.waterfall.set_notes(notes)
-        self.notes = notes
-        self.window().setWindowTitle(filename)
-        self.resizeEvent()
+        return notes
 
     def load_musicxml(self, filename):
         """Load a MusicXML file and display it on the waterfall"""
@@ -128,22 +181,30 @@ class View(QtWidgets.QGraphicsView):
         for note in xml.notes:
             note_dict = {'start_time': note.start_time, 'pitch': note.pitch, 'duration': note.duration}
             notes.append(note_dict)
-        self.waterfall.set_notes(notes)
+        self.view.waterfall.set_notes(notes)
 
     def load(self, filename):
         """Load a MIDI or MusicXML file and display it on the waterfall"""
         if filename.endswith('.mid'):
-            self.load_midi(filename)
+            notes = self.load_midi(filename)
         elif filename.endswith('.xml'):
-            self.load_musicxml(filename)
+            notes = self.load_musicxml(filename)
         else:
             raise ValueError('Unsupported file type')
 
-    def connect_midi_input(self, midi_input):
-        midi_input.message.connect(self.on_midi_message)
+        self.view.set_notes(notes)
+        self.window().setWindowTitle(filename)
 
-    def on_midi_message(self, midi_input, msg):
-        self.keyboard.midi_message(msg)
+    def connect_midi_input(self, midi_input):
+        self.view.connect_midi_input(midi_input)
+
+    def keyPressEvent(self, event):
+        if event.key() == QtCore.Qt.Key_Equal:
+            self.view.waterfall.zoom(1.1)
+        elif event.key() == QtCore.Qt.Key_Minus:
+            self.view.waterfall.zoom(0.9)
+        elif event.key() == QtCore.Qt.Key_Space:
+            self.view.waterfall.toggle_scroll()
 
 
 class Waterfall(QtWidgets.QGraphicsWidget):
@@ -159,12 +220,9 @@ class Waterfall(QtWidgets.QGraphicsWidget):
         self.current_time = 0.0
         self.zoom_factor = 10.0
 
-        self.scroll_speed = 1.0
-        self.scroll_start_time = None
-        self.scroll_offset = None
+        self.scroll_thread = AutoScrollThread(self)
         self.scroll_timer = QtCore.QTimer()
-        self.scroll_timer.timeout.connect(self.scroll_down)
-        self.scrolling = False
+        self.scroll_timer.timeout.connect(self.auto_scroll)
 
         self.update_transform()
 
@@ -189,21 +247,64 @@ class Waterfall(QtWidgets.QGraphicsWidget):
         transform.translate(0, -self.current_time)
         self.group.setTransform(transform)
         
-    def scroll_down(self):
-        elapsed = perf_counter() - self.scroll_start_time
-        self.set_time(self.scroll_offset + elapsed * self.scroll_speed)
+    def auto_scroll(self):
+        if self.scroll_thread.requested_time is not None:
+            self.set_time(self.scroll_thread.requested_time)
 
     def toggle_scroll(self):
-        if self.scrolling:
+        if self.scroll_thread.scrolling:
             self.scroll_timer.stop()
         else:
             self.scroll_timer.start(1000//60)  # Update at 60Hz
-            self.scroll_offset = self.current_time
-            self.scroll_start_time = perf_counter()
-        self.scrolling = not self.scrolling
+        self.scroll_thread.set_scrolling(not self.scroll_thread.scrolling)
 
     def resizeEvent(self, event):
         self.set_time(self.current_time)
+
+    def set_scroll_speed(self, speed):
+        """Set the speed of the auto-scrolling (in fraction of written tempo)
+        """
+        self.scroll_thread.scroll_speed = speed
+
+
+class AutoScrollThread(threading.Thread):
+    def __init__(self, waterfall):
+        super().__init__(target=self.auto_scroll_loop, daemon=True)
+        self.waterfall = waterfall
+        self.requested_time = None
+
+        self.scroll_speed = 1.0
+        self.scrolling = False
+        self.scroll_mode = 'tempo'  # 'wait' or 'tempo'
+
+        self.start()
+
+    def set_scrolling(self, scrolling):
+        if scrolling:
+            self.requested_time = self.waterfall.current_time
+        else:
+            self.requested_time = None
+        self.scrolling = scrolling
+
+    def auto_scroll_loop(self):
+        wf = self.waterfall
+        last_time = perf_counter()
+        while True:
+            dt = perf_counter() - last_time
+            last_time = perf_counter()
+            
+            if not self.scrolling:
+                self.requested_time = None
+                time.sleep(0.1)
+                continue
+
+            if self.scroll_mode == 'tempo':
+                self.requested_time += dt * self.scroll_speed
+            elif self.scroll_mode == 'wait':
+                # wait for each key to be pressed before continuing
+                pass
+            time.sleep(0.001)
+
 
 
 class GraphicsItemGroup(QtWidgets.QGraphicsItem):
@@ -430,7 +531,7 @@ class KeyItem(RectItem):
 
     def update_press_state(self):
         if self.key['pressed']:
-            color = Color(self.key['color']).mix(Color((128, 128, 128)))
+            color = Color(self.key['color']).mix(Color((150, 180, 220)))
             self.setBrush(Brush(color))
         else:
             self.setBrush(Brush(self.key['color']))
@@ -446,11 +547,22 @@ class MidiInput(QtCore.QObject):
 
     def __init__(self, port):
         import mido
+        self.queues = []
         self.port = mido.open_input(port)
         self.port.callback = self.callback
         super().__init__()
 
+    def add_queue(self):
+        q = queue.Queue()
+        self.queues.append(q)
+        return q
+
+    def remove_queue(self, q):
+        self.queues.remove(q)
+
     def callback(self, msg):
+        for q in self.queues:
+            q.put(msg)
         self.message.emit(self, msg)
 
 
@@ -463,7 +575,7 @@ if __name__ == '__main__':
     midi_input = MidiInput('Virtual Keyboard:Virtual Keyboard 129:0')
 
     app = QtWidgets.QApplication([])
-    w = View()
+    w = MainWindow()
     w.show()
 
     w.connect_midi_input(midi_input)

@@ -117,6 +117,7 @@ class View(QtWidgets.QGraphicsView):
         self.waterfall.set_notes(notes)
         self.notes = notes
         self.window().setWindowTitle(filename)
+        self.resizeEvent()
 
     def load_musicxml(self, filename):
         """Load a MusicXML file and display it on the waterfall"""
@@ -137,6 +138,12 @@ class View(QtWidgets.QGraphicsView):
             self.load_musicxml(filename)
         else:
             raise ValueError('Unsupported file type')
+
+    def connect_midi_input(self, midi_input):
+        midi_input.message.connect(self.on_midi_message)
+
+    def on_midi_message(self, midi_input, msg):
+        self.keyboard.midi_message(msg)
 
 
 class Waterfall(QtWidgets.QGraphicsWidget):
@@ -224,31 +231,32 @@ class NotesItem(GraphicsItemGroup):
         super().__init__()
         self.notes = []
         self.key_spec = Keyboard.key_spec()
-        # self.bars = [QtWidgets.QGraphicsLineItem(self.key_spec[0]['x_pos'], 0, self.key_spec[-1]['x_pos'] + self.key_spec[-1]['width'], 0)]
-        # for item in self.bars:
-        #     item.setPen(Pen(100, 100, 100))
-        #     self.addToGroup(item)
+        self.bars = [QtWidgets.QGraphicsLineItem(self.key_spec[0]['x_pos'], 0, self.key_spec[-1]['x_pos'] + self.key_spec[-1]['width'], 0)]
+        for item in self.bars:
+            item.setPen(Pen((100, 100, 100)))
+            self.addToGroup(item)
 
     def set_notes(self, notes):
         # Clear any existing notes
-        for note_item in self.notes:
+        for note_item in sorted(self.notes, key=lambda n: n['start_time']):
             self.scene().removeItem(note_item)
             self.removeFromGroup(note_item)
         self.notes.clear()
 
         # Create new notes
+        alpha = 220
         colors = {
-            0: (100, 100, 255),
-            1: (100, 255, 100),
-            2: (255, 100, 100),
-            3: (255, 255, 100),
-            4: (255, 100, 255),
-            5: (100, 255, 255),            
+            0: (100, 255, 100, alpha),
+            1: (100, 100, 255, alpha),
+            2: (255, 100, 100, alpha),
+            3: (255, 255, 100, alpha),
+            4: (255, 100, 255, alpha),
+            5: (100, 255, 255, alpha),
         }
-        for note in notes:
+        for i, note in enumerate(notes):
             keyspec = self.key_spec[note['pitch'].key]
             note_item = NoteItem(keyspec['x_pos'], note['start_time'], keyspec['width'], note['duration'], 
-                                 color=colors[note['track_n']])
+                                 color=colors[note['track_n']], z=i)
             self.notes.append(note_item)
             self.addToGroup(note_item)
 
@@ -302,12 +310,27 @@ class Keyboard(QtWidgets.QGraphicsWidget):
                 white_key_index += 1
         return keys
 
+    def midi_message(self, msg):
+        if msg.type == 'note_on':
+            self.key_on(msg.note - 21)
+        elif msg.type == 'note_off':
+            self.key_off(msg.note - 21)
+
+    def key_on(self, key_id):
+        key = self.keys[key_id]
+        key['pressed'] = True
+        key['item'].update_press_state()
+
+    def key_off(self, key_id):
+        key = self.keys[key_id]
+        key['pressed'] = False
+        key['item'].update_press_state()
+
 
 class Pitch:
     def __init__(self, midi_note):
         self.midi_note = midi_note
-        self.key = midi_note - 21
-    
+        self.key = midi_note - 21    
 
 
 class Pen(QtGui.QPen):
@@ -341,6 +364,14 @@ class Color(QtGui.QColor):
             self.alpha(),
         ))
 
+    def mix(self, color):
+        return Color((
+            (self.red() + color.red()) // 2,
+            (self.green() + color.green()) // 2,
+            (self.blue() + color.blue()) // 2,
+            (self.alpha() + color.alpha()) // 2,
+        ))
+
 
 class RectItem(QtWidgets.QGraphicsPolygonItem):
     def __init__(self, x, y, w, h, pen, brush, radius=0.1, radius_steps=4, z=0):
@@ -368,17 +399,18 @@ class RectItem(QtWidgets.QGraphicsPolygonItem):
 
 
 class NoteItem(RectItem):
-    def __init__(self, x, y, w, h, color):
-        self.grad = QtGui.QLinearGradient(QtCore.QPointF(0, 0), QtCore.QPointF(0, h))
+    def __init__(self, x, y, w, h, color, z):
+        self.grad = QtGui.QLinearGradient(QtCore.QPointF(0, 0), QtCore.QPointF(0, 1))
         self.grad.setCoordinateMode(QtGui.QGradient.CoordinateMode.ObjectMode)
         color = Color(color)
         self.grad.setColorAt(0, Color((255, 255, 255)))
-        self.grad.setColorAt(.05, color)
+        self.grad.setColorAt(.05/h, color)
         self.grad.setColorAt(1, color * 0.5)
         super().__init__(
             x, y, w, h, 
             pen=(100, 100, 100, 100),
             brush=self.grad,
+            z=z,
         )
 
 
@@ -394,15 +426,47 @@ class KeyItem(RectItem):
             radius=0.2,
             z=10 if key['is_black_key'] else 0,
         )
+        self.key = key
+
+    def update_press_state(self):
+        if self.key['pressed']:
+            color = Color(self.key['color']).mix(Color((128, 128, 128)))
+            self.setBrush(Brush(color))
+        else:
+            self.setBrush(Brush(self.key['color']))
+
+
+class MidiInput(QtCore.QObject):
+    message = QtCore.Signal(object, object)
+
+    @classmethod
+    def get_available_ports(cls):
+        import mido
+        return mido.get_input_names()
+
+    def __init__(self, port):
+        import mido
+        self.port = mido.open_input(port)
+        self.port.callback = self.callback
+        super().__init__()
+
+    def callback(self, msg):
+        self.message.emit(self, msg)
 
 
 
 if __name__ == '__main__':
     import sys
 
+    ports = MidiInput.get_available_ports()
+    print(ports)
+    midi_input = MidiInput('Virtual Keyboard:Virtual Keyboard 129:0')
+
     app = QtWidgets.QApplication([])
     w = View()
     w.show()
+
+    w.connect_midi_input(midi_input)
 
     w.load('arabesque.mid')
 

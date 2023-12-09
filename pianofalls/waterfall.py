@@ -127,9 +127,8 @@ class NotesItem(GraphicsItemGroup):
 
     def set_notes(self, notes):
         # Clear any existing notes
-        for note_item in sorted(self.notes, key=lambda n: n['start_time']):
+        for note_item in self.notes:
             self.scene().removeItem(note_item)
-            self.removeFromGroup(note_item)
         self.notes.clear()
 
         # Create new notes

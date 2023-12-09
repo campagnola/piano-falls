@@ -1,6 +1,7 @@
 import queue
 import mido
 from .qt import QtCore
+from .song import Pitch
 
 
 class MidiInput(QtCore.QObject):
@@ -91,12 +92,3 @@ def load_midi(filename):
     # filter out empty notes
     notes = [n for n in notes if n['duration'] > 0]
     return notes
-
-
-
-class Pitch:
-    def __init__(self, midi_note):
-        self.midi_note = midi_note
-        self.key = midi_note - 21    
-
-

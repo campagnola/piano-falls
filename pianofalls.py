@@ -5,9 +5,21 @@ from pianofalls.mainwindow import MainWindow
 
 
 if __name__ == '__main__':
-    ports = MidiInput.get_available_ports()
-    print(ports)
-    midi_input = MidiInput('Virtual Keyboard:Virtual Keyboard 129:0')
+    midi_ports = MidiInput.get_available_ports()
+    if len(sys.argv) == 1:
+        for i, port in enumerate(midi_ports):
+            print(f"[{i}] {port}")
+        port = input("Select MIDI port: ")
+    else:
+        port = sys.argv[1]
+    try:
+        port_num = int(port)
+        port = midi_ports[port_num]
+    except ValueError:
+        pass
+
+    midi_input = MidiInput(port)
+
 
     app = QtWidgets.QApplication([])
     w = MainWindow()

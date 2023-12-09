@@ -75,6 +75,8 @@ class AutoScrollThread(threading.Thread):
         self.scrolling = False
         self.scroll_mode = 'tempo'  # 'wait' or 'tempo'
 
+        self.midi_queue = None
+
         self.start()
 
     def set_scrolling(self, scrolling):
@@ -84,13 +86,21 @@ class AutoScrollThread(threading.Thread):
             self.requested_time = None
         self.scrolling = scrolling
 
+    def connect_midi_input(self, midi_input):
+        self.midi_queue = midi_input.add_queue()
+
     def auto_scroll_loop(self):
-        wf = self.waterfall
         last_time = time.perf_counter()
+        midi_messages = []
         while True:
             now = time.perf_counter()
             dt = now - last_time
             last_time = now
+
+            midi_queue = self.midi_queue
+            if midi_queue is not None:
+                while not midi_queue.empty():
+                    midi_messages.append(midi_queue.get())
             
             if not self.scrolling:
                 self.requested_time = None

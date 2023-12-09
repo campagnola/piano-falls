@@ -52,6 +52,7 @@ class View(QtWidgets.QGraphicsView):
 
     def connect_midi_input(self, midi_input):
         midi_input.message.connect(self.on_midi_message)
+        self.waterfall.scroll_thread.connect_midi_input(midi_input)
 
     def on_midi_message(self, midi_input, msg):
         self.keyboard.midi_message(msg)

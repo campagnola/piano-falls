@@ -27,7 +27,8 @@ if __name__ == '__main__':
 
     w.connect_midi_input(midi_input)
 
-    w.load('arabesque.mid')
+    if len(sys.argv) > 2:
+        w.load(sys.argv[2])
 
     def print_transforms(item):
         while True:

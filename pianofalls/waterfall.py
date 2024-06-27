@@ -112,7 +112,7 @@ class AutoScrollThread(threading.Thread):
             elif self.scroll_mode == 'wait':
                 # wait for each key to be pressed before continuing
                 pass
-            time.sleep(0.001)
+            time.sleep(0.003)
 
 
 class NotesItem(GraphicsItemGroup):

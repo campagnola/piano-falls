@@ -1,12 +1,18 @@
+import os
 from qtpy import QtWidgets, QtGui, QtCore
 from .view import View
 from .ctrl_panel import CtrlPanel
+from .scroller import TimeScroller
 from .midi import load_midi
 
 
 class MainWindow(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
+        self.last_filename = None
+
+        self.scroller = TimeScroller()
+
         self.layout = QtWidgets.QVBoxLayout()
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.view = View()
@@ -15,7 +21,11 @@ class MainWindow(QtWidgets.QWidget):
         self.layout.addWidget(self.view)
         self.setLayout(self.layout)
         self.view.focusWidget()
-        self.ctrl_panel.speed_changed.connect(self.view.waterfall.set_scroll_speed)
+
+        self.scroller.current_time_changed.connect(self.view.set_time)
+        self.ctrl_panel.speed_changed.connect(self.scroller.set_scroll_speed)
+        self.ctrl_panel.zoom_changed.connect(self.view.waterfall.set_zoom)
+        self.view.wheel_event.connect(self.view_wheel_event)
 
     def load_musicxml(self, filename):
         """Load a MusicXML file and display it on the waterfall"""
@@ -30,18 +40,23 @@ class MainWindow(QtWidgets.QWidget):
 
     def load(self, filename):
         """Load a MIDI or MusicXML file and display it on the waterfall"""
+        filename = os.path.expanduser(filename)
         if filename.endswith('.mid'):
-            notes = load_midi(filename)
+            song = load_midi(filename)
         elif filename.endswith('.xml'):
-            notes = self.load_musicxml(filename)
+            song = self.load_musicxml(filename)
         else:
             raise ValueError('Unsupported file type')
 
-        self.view.set_notes(notes)
+        self.view.set_song(song)
+        self.scroller.set_song(song)
+
         self.window().setWindowTitle(filename)
+        self.last_filename = filename
 
     def connect_midi_input(self, midi_input):
         self.view.connect_midi_input(midi_input)
+        self.scroller.connect_midi_input(midi_input)
 
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Equal:
@@ -49,4 +64,8 @@ class MainWindow(QtWidgets.QWidget):
         elif event.key() == QtCore.Qt.Key_Minus:
             self.view.waterfall.zoom(0.9)
         elif event.key() == QtCore.Qt.Key_Space:
-            self.view.waterfall.toggle_scroll()
+            self.scroller.toggle_scrolling()
+
+    def view_wheel_event(self, event):
+        delta = event.angleDelta().y()
+        self.scroller.scroll_by(delta / 20)

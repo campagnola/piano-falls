@@ -1,8 +1,6 @@
-import threading
-import time
-
 from .keyboard import Keyboard
 from .qt import QtCore, QtGui, QtWidgets, RectItem, Color, Pen, GraphicsItemGroup
+from .song import Song
 
 
 class Waterfall(QtWidgets.QGraphicsWidget):
@@ -12,30 +10,40 @@ class Waterfall(QtWidgets.QGraphicsWidget):
 
         self.group = GraphicsItemGroup(self)
 
+        self.song = None
         self.notes_item = NotesItem()
         self.group.addToGroup(self.notes_item)
 
         self.current_time = 0.0
+        self.requested_time = 0.0
         self.zoom_factor = 10.0
 
-        self.scroll_thread = AutoScrollThread(self)
-        self.scroll_timer = QtCore.QTimer()
-        self.scroll_timer.timeout.connect(self.auto_scroll)
+        # limit the update rate to 60 fps
+        self.update_timer = QtCore.QTimer()
+        self.update_timer.timeout.connect(self._update_time)
+        self.update_timer.start(16)
 
         self.update_transform()
 
-    def set_notes(self, notes):
-        self.notes_item.set_notes(notes)
-        
-    def scroll(self, amount):
-        self.set_time(self.current_time + amount / self.zoom_factor)
+    def set_song(self, song: Song):
+        self.song = song
+        self.notes_item.set_notes(song.notes)
 
     def set_time(self, time):
-        self.current_time = time
-        self.update_transform()
+        self.requested_time = time
 
-    def zoom(self, factor):
-        self.zoom_factor *= factor
+    def _update_time(self):
+        req_time = self.requested_time
+        if req_time != self.current_time:    
+            self.current_time = req_time
+            self.update_transform()
+
+    def zoom(self, factor: float):
+        """Multiply the zoom by the given factor"""
+        self.set_zoom(self.zoom_factor * factor)
+
+    def set_zoom(self, factor: float):
+        self.zoom_factor = factor
         self.update_transform()
 
     def update_transform(self):
@@ -44,75 +52,9 @@ class Waterfall(QtWidgets.QGraphicsWidget):
         transform.scale(1, -self.zoom_factor)
         transform.translate(0, -self.current_time)
         self.group.setTransform(transform)
-        
-    def auto_scroll(self):
-        if self.scroll_thread.requested_time is not None:
-            self.set_time(self.scroll_thread.requested_time)
-
-    def toggle_scroll(self):
-        if self.scroll_thread.scrolling:
-            self.scroll_timer.stop()
-        else:
-            self.scroll_timer.start(1000//60)  # Update at 60Hz
-        self.scroll_thread.set_scrolling(not self.scroll_thread.scrolling)
 
     def resizeEvent(self, event):
         self.set_time(self.current_time)
-
-    def set_scroll_speed(self, speed):
-        """Set the speed of the auto-scrolling (in fraction of written tempo)
-        """
-        self.scroll_thread.scroll_speed = speed
-
-
-class AutoScrollThread(threading.Thread):
-    def __init__(self, waterfall):
-        super().__init__(target=self.auto_scroll_loop, daemon=True)
-        self.waterfall = waterfall
-        self.requested_time = None
-
-        self.scroll_speed = 1.0
-        self.scrolling = False
-        self.scroll_mode = 'tempo'  # 'wait' or 'tempo'
-
-        self.midi_queue = None
-
-        self.start()
-
-    def set_scrolling(self, scrolling):
-        if scrolling:
-            self.requested_time = self.waterfall.current_time
-        else:
-            self.requested_time = None
-        self.scrolling = scrolling
-
-    def connect_midi_input(self, midi_input):
-        self.midi_queue = midi_input.add_queue()
-
-    def auto_scroll_loop(self):
-        last_time = time.perf_counter()
-        midi_messages = []
-        while True:
-            now = time.perf_counter()
-            dt = now - last_time
-            last_time = now
-
-            midi_queue = self.midi_queue
-            if midi_queue is not None:
-                while not midi_queue.empty():
-                    midi_messages.append(midi_queue.get())
-            
-            if not self.scrolling:
-                self.requested_time = None
-                time.sleep(0.1)
-                continue
-
-            if self.scroll_mode == 'tempo':
-                self.requested_time += dt * self.scroll_speed
-            elif self.scroll_mode == 'wait':
-                # wait for each key to be pressed before continuing
-                pass
-            time.sleep(0.003)
 
 
 class NotesItem(GraphicsItemGroup):
@@ -142,9 +84,9 @@ class NotesItem(GraphicsItemGroup):
             5: (100, 255, 255, alpha),
         }
         for i, note in enumerate(notes):
-            keyspec = self.key_spec[note['pitch'].key]
-            note_item = NoteItem(keyspec['x_pos'], note['start_time'], keyspec['width'], note['duration'], 
-                                 color=colors[note['track_n']], z=i)
+            keyspec = self.key_spec[note.pitch.key]
+            note_item = NoteItem(keyspec['x_pos'], note.start_time, keyspec['width'], note.duration, 
+                                 color=colors[note.track_n], z=i)
             self.notes.append(note_item)
             self.addToGroup(note_item)
 

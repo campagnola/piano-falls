@@ -1,9 +1,13 @@
 from qtpy import QtWidgets, QtGui, QtCore
 from .keyboard import Keyboard
 from .waterfall import Waterfall
+from .midi import Song
 
 
 class View(QtWidgets.QGraphicsView):
+
+    wheel_event = QtCore.Signal(object)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.scene = QtWidgets.QGraphicsScene(parent=self)
@@ -42,17 +46,18 @@ class View(QtWidgets.QGraphicsView):
         self.waterfall.setGeometry(0, 0, 88, waterfall_height)
 
     def wheelEvent(self, event):
-        delta = event.angleDelta().y()
-        self.waterfall.scroll(delta / 20)
+        self.wheel_event.emit(event)
 
-    def set_notes(self, notes):
-        self.waterfall.set_notes(notes)
-        self.notes = notes
+    def set_song(self, song:Song):
+        self.waterfall.set_song(song)
+        self.song = song
         self.resizeEvent()
+
+    def set_time(self, time):
+        self.waterfall.set_time(time)
 
     def connect_midi_input(self, midi_input):
         midi_input.message.connect(self.on_midi_message)
-        self.waterfall.scroll_thread.connect_midi_input(midi_input)
 
     def on_midi_message(self, midi_input, msg):
         self.keyboard.midi_message(msg)

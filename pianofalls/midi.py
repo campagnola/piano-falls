@@ -1,7 +1,7 @@
 import queue
 import mido
 from .qt import QtCore
-from .song import Pitch
+from .song import Pitch, Song
 
 
 class MidiInput(QtCore.QObject):
@@ -32,7 +32,7 @@ class MidiInput(QtCore.QObject):
         self.message.emit(self, msg)
 
 
-def load_midi(filename):
+def load_midi(filename:str) -> Song:
     """Load a MIDI file and display it on the waterfall"""
     midi = mido.MidiFile(filename)
     assert midi.type in (0, 1)
@@ -91,4 +91,5 @@ def load_midi(filename):
 
     # filter out empty notes
     notes = [n for n in notes if n['duration'] > 0]
-    return notes
+
+    return Song(notes)

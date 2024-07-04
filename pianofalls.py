@@ -33,6 +33,8 @@ class GraphicsViewUpdateWatcher(QtCore.QObject):
         # self.new_frame.emit(array[:64, :512].copy())
 
         source_rect = self.view.waterfall.sceneBoundingRect()
+        source_rect.setLeft(-2)
+        source_rect.setRight(source_rect.right() + 2)
         source_rect.setTop(source_rect.bottom() - source_rect.width() * 64 / 512)
         img = render_scene_to_rgb_bytes(self.view.scene, source_rect, 512, 64)
         # self.v.setImage(img.transpose(1, 0, 2))
@@ -110,19 +112,19 @@ def ndarray_from_qimage(qimg):
 
 if __name__ == '__main__':
     midi_ports = MidiInput.get_available_ports()
-    if len(sys.argv) == 1:
+    port_name = None
+    for i, port_name in enumerate(midi_ports):
+        if 'piano' in port_name.lower():
+            break
+
+    if port_name is None:
         for i, port in enumerate(midi_ports):
             print(f"[{i}] {port}")
-        port = input("Select MIDI port: ")
-    else:
-        port = sys.argv[1]
-    try:
-        port_num = int(port)
-        port = midi_ports[port_num]
-    except ValueError:
-        pass
+        port = int(input("Select MIDI port: "))
+        port_name = midi_ports[port]
 
-    midi_input = MidiInput(port)
+    print(f"Selected MIDI port {port_name}")
+    midi_input = MidiInput(port_name)
 
 
     app = QtWidgets.QApplication([])
@@ -136,8 +138,8 @@ if __name__ == '__main__':
 
     w.connect_midi_input(midi_input)
 
-    if len(sys.argv) > 2:
-        w.load(sys.argv[2])
+    if len(sys.argv) > 1:
+        w.load(sys.argv[1])
 
     def print_transforms(item):
         while True:

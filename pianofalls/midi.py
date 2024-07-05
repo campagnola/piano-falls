@@ -1,4 +1,4 @@
-import queue
+import time
 import mido
 from .qt import QtCore
 from .song import Pitch, Song
@@ -13,23 +13,25 @@ class MidiInput(QtCore.QObject):
         return mido.get_input_names()
 
     def __init__(self, port):
-        self.queues = []
         self.port = mido.open_input(port)
         self.port.callback = self.callback
         super().__init__()
 
-    def add_queue(self):
-        q = queue.Queue()
-        self.queues.append(q)
-        return q
-
-    def remove_queue(self, q):
-        self.queues.remove(q)
-
     def callback(self, msg):
-        for q in self.queues:
-            q.put(msg)
-        self.message.emit(self, msg)
+        # warning: exceptions in this callback are silently ignored
+        self.message.emit(self, MidiMessage(msg))
+
+
+class MidiMessage:
+    def __init__(self, msg):
+        self.msg = msg
+        self.perf_counter = time.perf_counter()
+
+    def __getattr__(self, name):
+        return getattr(self.msg, name)
+    
+    def __repr__(self):
+        return f'<MidiMessage {self.perf_counter} {self.type} {self.note}>'
 
 
 def load_midi(filename:str) -> Song:

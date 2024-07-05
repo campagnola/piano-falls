@@ -110,7 +110,12 @@ def ndarray_from_qimage(qimg):
     return arr.copy()
 
 
+def excepthook(*args):
+    sys.__excepthook__(*args)
+
 if __name__ == '__main__':
+    sys.excepthook = excepthook
+
     midi_ports = MidiInput.get_available_ports()
     port_name = None
     for i, port_name in enumerate(midi_ports):

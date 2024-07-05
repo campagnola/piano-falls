@@ -38,6 +38,8 @@ class Note:
         self.on_msg = on_msg
         self.off_msg = off_msg
 
+    def __repr__(self):
+        return f'<Note {self.start_time} {self.pitch.midi_note} {self.duration}>'
 
 class Pitch:
     def __init__(self, midi_note):

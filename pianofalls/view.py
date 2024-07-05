@@ -57,7 +57,7 @@ class View(QtWidgets.QGraphicsView):
         self.waterfall.set_time(time)
 
     def connect_midi_input(self, midi_input):
-        midi_input.message.connect(self.on_midi_message)
+        midi_input.message.connect(self.on_midi_message, QtCore.Qt.ConnectionType.QueuedConnection)
 
     def on_midi_message(self, midi_input, msg):
         self.keyboard.midi_message(msg)

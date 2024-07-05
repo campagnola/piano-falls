@@ -41,12 +41,14 @@ class MainWindow(QtWidgets.QWidget):
     def load(self, filename):
         """Load a MIDI or MusicXML file and display it on the waterfall"""
         filename = os.path.expanduser(filename)
-        if filename.endswith('.mid'):
+        if filename == '':
+            return
+        elif filename.endswith('.mid'):
             song = load_midi(filename)
         elif filename.endswith('.xml'):
             song = self.load_musicxml(filename)
         else:
-            raise ValueError('Unsupported file type')
+            raise ValueError(f'Unsupported file type: {filename}')
 
         self.view.set_song(song)
         self.scroller.set_song(song)

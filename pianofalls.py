@@ -2,7 +2,7 @@ import sys
 from pianofalls.midi import MidiInput
 from pianofalls.qt import QtWidgets, QtGui, QtCore
 from pianofalls.mainwindow import MainWindow
-from screen_send import FrameSender
+from pianofalls.screen_send import FrameSender
 import numpy as np
 
 

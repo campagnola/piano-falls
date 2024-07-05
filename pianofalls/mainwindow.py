@@ -6,7 +6,7 @@ from .view import View
 from .ctrl_panel import CtrlPanel
 from .scroller import TimeScroller
 from .midi import load_midi
-
+from .file_tree import FileTree
 
 class MainWindow(QtWidgets.QWidget):
     def __init__(self):
@@ -18,14 +18,25 @@ class MainWindow(QtWidgets.QWidget):
         self.layout = QtWidgets.QGridLayout()
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
-        self.view = View()
         self.ctrl_panel = CtrlPanel()
         self.layout.addWidget(self.ctrl_panel, 0, 0, 1, 2)
-        self.layout.addWidget(self.view, 1, 0, 1, 1)
+
+        self.splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        self.layout.addWidget(self.splitter, 1, 0, 1, 1)
+
+        self.file_tree = FileTree()
+        self.file_tree.set_roots(['~/midi', '~/Downloads'])
+        self.splitter.addWidget(self.file_tree)
+
+        self.view = View()
+        self.splitter.addWidget(self.view)
+
+        self.splitter.setSizes([400, 400])
 
         self.overview = Overview()
         self.layout.addWidget(self.overview, 1, 1, 1, 1)
         self.overview.setMaximumWidth(100)
+
         self.setLayout(self.layout)
 
         self.scroller.current_time_changed.connect(self.time_changed)
@@ -33,11 +44,12 @@ class MainWindow(QtWidgets.QWidget):
         self.ctrl_panel.zoom_changed.connect(self.view.waterfall.set_zoom)
         self.view.wheel_event.connect(self.view_wheel_event)
         self.overview.clicked.connect(self.scroller.set_time)
+        self.file_tree.file_double_clicked.connect(self.load)
 
+        self.resize(1200, 800)
         self.show()
         self.view.focusWidget()
         self.overview.resizeEvent()
-
 
     def load_musicxml(self, filename):
         """Load a MusicXML file and display it on the waterfall"""
@@ -68,6 +80,7 @@ class MainWindow(QtWidgets.QWidget):
 
         self.window().setWindowTitle(filename)
         self.last_filename = filename
+        self.view.focusWidget()
 
     def connect_midi_input(self, midi_input):
         self.view.connect_midi_input(midi_input)

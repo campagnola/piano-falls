@@ -170,5 +170,9 @@ class WaitScrollMode(ScrollMode):
 class FollowScrollMode(ScrollMode):
     def update(self, current_time, dt, scroll_speed):
         self.check_midi()
+
+        recent_keys = {msg.note:msg for msg in self.recent_midi if msg.type == 'note_on'}
         # use BLAST to predict where we are in the song, based on recent midi input events
         return current_time + dt * scroll_speed
+    
+

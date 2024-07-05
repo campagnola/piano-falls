@@ -1,5 +1,7 @@
 import os
 from qtpy import QtWidgets, QtGui, QtCore
+
+from .overview import Overview
 from .view import View
 from .ctrl_panel import CtrlPanel
 from .scroller import TimeScroller
@@ -13,19 +15,25 @@ class MainWindow(QtWidgets.QWidget):
 
         self.scroller = TimeScroller()
 
-        self.layout = QtWidgets.QVBoxLayout()
+        self.layout = QtWidgets.QGridLayout()
         self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(0)
         self.view = View()
         self.ctrl_panel = CtrlPanel()
-        self.layout.addWidget(self.ctrl_panel)
-        self.layout.addWidget(self.view)
+        self.layout.addWidget(self.ctrl_panel, 0, 0, 1, 2)
+        self.layout.addWidget(self.view, 1, 0, 1, 1)
+
+        self.overview = Overview()
+        self.layout.addWidget(self.overview, 1, 1, 1, 1)
+        self.overview.setMaximumWidth(100)
         self.setLayout(self.layout)
         self.view.focusWidget()
 
-        self.scroller.current_time_changed.connect(self.view.set_time)
+        self.scroller.current_time_changed.connect(self.time_changed)
         self.ctrl_panel.speed_changed.connect(self.scroller.set_scroll_speed)
         self.ctrl_panel.zoom_changed.connect(self.view.waterfall.set_zoom)
         self.view.wheel_event.connect(self.view_wheel_event)
+        self.overview.clicked.connect(self.scroller.set_time)
 
     def load_musicxml(self, filename):
         """Load a MusicXML file and display it on the waterfall"""
@@ -50,6 +58,7 @@ class MainWindow(QtWidgets.QWidget):
         else:
             raise ValueError(f'Unsupported file type: {filename}')
 
+        self.overview.set_song(song)
         self.view.set_song(song)
         self.scroller.set_song(song)
 
@@ -70,4 +79,8 @@ class MainWindow(QtWidgets.QWidget):
 
     def view_wheel_event(self, event):
         delta = event.angleDelta().y()
-        self.scroller.scroll_by(delta / (100 * self.view.waterfall.zoom_factor))
+        self.scroller.scroll_by(-delta / (100 * self.view.waterfall.zoom_factor))
+
+    def time_changed(self, time):
+        self.view.set_time(time)
+        self.overview.set_time(time)

@@ -1,4 +1,4 @@
-from qtpy import QtWidgets, QtGui, QtCore
+from .qt import QtWidgets, QtGui, QtCore
 from .keyboard import Keyboard
 from .waterfall import Waterfall
 from .midi import Song

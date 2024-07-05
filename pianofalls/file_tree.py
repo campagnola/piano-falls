@@ -72,6 +72,6 @@ class FileTreeItem(QtWidgets.QTreeWidgetItem):
         
         self.removeChild(self._loading_item)
         for child in sorted(self.path.iterdir()):
-            if child.is_dir() or child.suffix in ['.mid', '.midi', '.mxl']:
+            if child.is_dir() or child.suffix in ['.mid', '.midi', '.mxl', '.xml', '.musicxml']:
                 item = FileTreeItem(child)
                 self.addChild(item)

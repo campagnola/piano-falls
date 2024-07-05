@@ -1,12 +1,14 @@
 import os
-from qtpy import QtWidgets, QtGui, QtCore
 
+from .qt import QtWidgets, QtCore
 from .overview import Overview
 from .view import View
 from .ctrl_panel import CtrlPanel
 from .scroller import TimeScroller
 from .midi import load_midi
+from .musicxml import load_musicxml
 from .file_tree import FileTree
+
 
 class MainWindow(QtWidgets.QWidget):
     def __init__(self):
@@ -51,26 +53,16 @@ class MainWindow(QtWidgets.QWidget):
         self.view.focusWidget()
         self.overview.resizeEvent()
 
-    def load_musicxml(self, filename):
-        """Load a MusicXML file and display it on the waterfall"""
-        # use musicxml api to load filename
-        import musicxml.parser.parser
-        xml = musicxml.parser.parser.parse_musicxml(filename)
-        notes = []
-        for note in xml.notes:
-            note_dict = {'start_time': note.start_time, 'pitch': note.pitch, 'duration': note.duration}
-            notes.append(note_dict)
-        self.view.waterfall.set_notes(notes)
-
     def load(self, filename):
         """Load a MIDI or MusicXML file and display it on the waterfall"""
         filename = os.path.expanduser(filename)
+        ext = os.path.splitext(filename)[1]
         if filename == '':
-            return
-        elif filename.endswith('.mid'):
+            return        
+        elif ext in ['.mid', '.midi']:
             song = load_midi(filename)
-        elif filename.endswith('.xml'):
-            song = self.load_musicxml(filename)
+        elif ext in ['.xml', '.mxl']:
+            song = load_musicxml(filename)
         else:
             raise ValueError(f'Unsupported file type: {filename}')
 

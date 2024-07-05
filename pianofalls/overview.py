@@ -36,10 +36,9 @@ class Overview(QtWidgets.QGraphicsView):
         self.time_line.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 128)))
         self.time_line.setParentItem(self.group)
 
-        self.resizeEvent(None)
-
     def set_song(self, song: Song):
         self.notes_item.set_notes(song.notes)
+        self.resizeEvent()
 
     def set_time(self, time):
         self.time_line.setLine(0, time, 88, time)
@@ -56,6 +55,6 @@ class Overview(QtWidgets.QGraphicsView):
         time = self.group.mapFromScene(self.mapToScene(event.pos())).y()
         self.clicked.emit(time)
 
-    def resizeEvent(self, event):
+    def resizeEvent(self, event=None):
         self.fitInView(self.notes_item, QtCore.Qt.AspectRatioMode.IgnoreAspectRatio)
         

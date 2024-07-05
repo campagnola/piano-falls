@@ -27,13 +27,17 @@ class MainWindow(QtWidgets.QWidget):
         self.layout.addWidget(self.overview, 1, 1, 1, 1)
         self.overview.setMaximumWidth(100)
         self.setLayout(self.layout)
-        self.view.focusWidget()
 
         self.scroller.current_time_changed.connect(self.time_changed)
         self.ctrl_panel.speed_changed.connect(self.scroller.set_scroll_speed)
         self.ctrl_panel.zoom_changed.connect(self.view.waterfall.set_zoom)
         self.view.wheel_event.connect(self.view_wheel_event)
         self.overview.clicked.connect(self.scroller.set_time)
+
+        self.show()
+        self.view.focusWidget()
+        self.overview.resizeEvent()
+
 
     def load_musicxml(self, filename):
         """Load a MusicXML file and display it on the waterfall"""

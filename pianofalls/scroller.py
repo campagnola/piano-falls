@@ -32,8 +32,8 @@ class TimeScroller(QtCore.QObject):
     def set_song(self, song):
         self.song = song
         self.scroll_mode.set_song(song)
-        self.set_time(-3)
-        self.set_scrolling(False)
+        self.set_time(-2)
+        self.set_scrolling(True)
         self.thread.start()
 
     def set_scroll_speed(self, speed):
@@ -53,6 +53,7 @@ class TimeScroller(QtCore.QObject):
 
     def set_target_time(self, time):
         self.target_time = time
+        self.scroll_mode.set_time(time)
 
     def scroll_by(self, delta):
         self.set_target_time(self.target_time + delta)
@@ -72,7 +73,7 @@ class TimeScroller(QtCore.QObject):
             last_time = now
             
             if self.scrolling:
-                self.set_target_time(self.scroll_mode.update(self.current_time, dt, self.scroll_speed))
+                self.target_time = self.scroll_mode.update(self.current_time, dt, self.scroll_speed)
 
             # Exponentially approach target
             if self.scroll_tau > 0:
@@ -140,7 +141,7 @@ class WaitScrollMode(ScrollMode):
         # find how far we have played into the song
         self.check_midi()
         recent_keys = {msg.note:msg for msg in self.recent_midi if msg.type == 'note_on'}
-        while True:
+        while True:            
             next_note = self.song.notes[self.next_note_index]
             if next_note.start_time > current_time + self.early_key_time:
                 break

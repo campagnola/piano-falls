@@ -6,11 +6,14 @@ class Song:
         # *notes* is a list of dicts describing each note
         # keys are: start_time, pitch, duration, track, track_n, on_msg, off_msg
         self.notes = [Note(index=i, **n) for i,n in enumerate(notes)]
+        self.notes.sort(key=lambda n: n.start_time)
 
         # Lookup table for quickly finding the note at a given time
         self.time_lookup = {}
         for i,note in enumerate(self.notes):
-            self.time_lookup[int(note.start_time)] = i
+            t = int(note.start_time)
+            if t not in self.time_lookup:
+                self.time_lookup[t] = i
 
     def __len__(self):
         return len(self.notes)

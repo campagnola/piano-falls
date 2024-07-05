@@ -16,7 +16,7 @@ class Waterfall(QtWidgets.QGraphicsWidget):
 
         self.current_time = 0.0
         self.requested_time = 0.0
-        self.zoom_factor = 10.0
+        self.zoom_factor = 1.0
 
         # limit the update rate to 60 fps
         self.update_timer = QtCore.QTimer()
@@ -49,7 +49,7 @@ class Waterfall(QtWidgets.QGraphicsWidget):
     def update_transform(self):
         transform = QtGui.QTransform()
         transform.translate(0, self.geometry().height())
-        transform.scale(1, -self.zoom_factor)
+        transform.scale(1, -6 * self.zoom_factor)
         transform.translate(0, -self.current_time)
         self.group.setTransform(transform)
 

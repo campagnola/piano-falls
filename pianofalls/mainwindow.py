@@ -70,4 +70,4 @@ class MainWindow(QtWidgets.QWidget):
 
     def view_wheel_event(self, event):
         delta = event.angleDelta().y()
-        self.scroller.scroll_by(delta / 20)
+        self.scroller.scroll_by(delta / (100 * self.view.waterfall.zoom_factor))

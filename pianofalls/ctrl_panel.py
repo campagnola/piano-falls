@@ -17,6 +17,7 @@ class CtrlPanel(QtWidgets.QWidget):
         self.layout.addWidget(self.load_button)
 
         self.speed_label = QtWidgets.QLabel('Speed:')
+        self.speed_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.layout.addWidget(self.speed_label)
         self.speed_spin = QtWidgets.QSpinBox(
             minimum=1, maximum=1000, singleStep=10, value=100, suffix='%'
@@ -24,6 +25,7 @@ class CtrlPanel(QtWidgets.QWidget):
         self.layout.addWidget(self.speed_spin)
 
         self.zoom_label = QtWidgets.QLabel('Zoom:')
+        self.zoom_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.layout.addWidget(self.zoom_label)
         self.zoom_spin = QtWidgets.QSpinBox(
             minimum=1, maximum=1000, singleStep=10, value=100, suffix='%'

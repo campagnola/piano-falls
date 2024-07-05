@@ -33,7 +33,9 @@ class Overview(QtWidgets.QGraphicsView):
         self.notes_item.setParentItem(self.group)
 
         self.time_line = QtWidgets.QGraphicsLineItem()
-        self.time_line.setPen(QtGui.QPen(QtGui.QColor(255, 255, 255, 128)))
+        pen = QtGui.QPen(QtGui.QColor(255, 255, 255, 128))
+        pen.setCosmetic(True)
+        self.time_line.setPen(pen)
         self.time_line.setParentItem(self.group)
 
     def set_song(self, song: Song):

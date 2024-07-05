@@ -10,10 +10,13 @@ class Song:
 
         # Lookup table for quickly finding the note at a given time
         self.time_lookup = {}
+        last = -1
         for i,note in enumerate(self.notes):
             t = int(note.start_time)
             if t not in self.time_lookup:
-                self.time_lookup[t] = i
+                for j in range(last+1, t+1):
+                    self.time_lookup[j] = i
+                last = t
 
     def __len__(self):
         return len(self.notes)

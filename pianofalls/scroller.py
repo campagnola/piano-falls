@@ -22,6 +22,7 @@ class TimeScroller(QtCore.QObject):
         self.set_scroll_mode('wait')
 
         self.thread = threading.Thread(target=self.auto_scroll_loop, daemon=True)
+        self.thread.start()
 
     def set_scrolling(self, scrolling):
         self.scrolling = scrolling
@@ -34,7 +35,6 @@ class TimeScroller(QtCore.QObject):
         self.scroll_mode.set_song(song)
         self.set_time(-2)
         self.set_scrolling(True)
-        self.thread.start()
 
     def set_scroll_speed(self, speed):
         self.scroll_speed = speed
@@ -71,6 +71,10 @@ class TimeScroller(QtCore.QObject):
             now = time.perf_counter()
             dt = now - last_time
             last_time = now
+
+            if self.song is None:
+                time.sleep(0.1)
+                continue
             
             if self.scrolling:
                 self.target_time = self.scroll_mode.update(self.current_time, dt, self.scroll_speed)
@@ -155,13 +159,12 @@ class WaitScrollMode(ScrollMode):
                 break
 
         if self.next_note_index >= len(self.song):
-            return current_time
+            max_time = self.song.notes[-1].start_time + self.song.notes[-1].duration
+        else:
+            max_time = self.song.notes[self.next_note_index].start_time
         
-        # next unplayed note
-        next_note = self.song.notes[self.next_note_index]
-
         desired_time = current_time + dt * scroll_speed
-        return min(desired_time, next_note.start_time)
+        return min(desired_time, max_time)
 
 
 class FollowScrollMode(ScrollMode):

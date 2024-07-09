@@ -56,13 +56,21 @@ def load_midi(filename:str) -> Song:
     # calculate absolute time of each message, accounting for tempo changes that affect all tracks
     tempo = 500000
     ticks_per_beat = midi.ticks_per_beat
+    abs_time = 0
+    last_ticks = 0
+
     for msg in messages:
-        last_msg = msg['prev_track_msg']
-        last_msg_time = 0 if last_msg is None else last_msg['time']
+        ticks = msg['ticks']
+        # Update absolute time based on the elapsed ticks and current tempo
+        dt = mido.tick2second(ticks - last_ticks, ticks_per_beat, tempo)
+        abs_time += dt
+        msg['time'] = abs_time
+
+        # If the message is a tempo change, update the tempo
         if msg['midi'].type == 'set_tempo':
             tempo = msg['midi'].tempo
-        dt = mido.tick2second(msg['midi'].time, ticks_per_beat, tempo)
-        msg['time'] = last_msg_time + dt
+
+        last_ticks = ticks
 
     # collapse note_on / note_off messages into a single event with duration
     current_notes = {}  # To store the notes currently being played

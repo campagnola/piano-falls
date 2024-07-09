@@ -15,11 +15,23 @@ def load_musicxml(filename):
     else:
         with open(filename) as f:
             xml = parse_musicxml(f.read())
-    
+
+    # iterate over parts in the score
     notes = []
-    for note in xml.notes:
-        note_dict = {'start_time': note.start_time, 'pitch': note.pitch, 'duration': note.duration}
-        notes.append(note_dict)
+    xml.find_children('XMLPartList')[0].find_children('XMLScorePart')[0]
+
+    for part in xml.findall('.//part'):
+        current_time = 0
+        for measure in part.findall('.//measure'):
+            for note in measure.findall('.//note'):
+                note_dict = {
+                    'start_time': msg_time, 'pitch': Pitch(midi_note=msg.note), 'duration': None, 
+                    'track': message['track'], 'track_n': message['track_n'],
+                    'on_msg': message, 'off_msg': None
+                }
+                notes.append(note_dict)
+        parts.append(notes)
+    return xml
 
 
 def parse_musicxml(xml_str):

@@ -39,6 +39,9 @@ class Color(QtGui.QColor):
             self.alpha(),
         ))
 
+    def __rmul__(self, x):
+        return self.__mul__(x)
+
     def mix(self, color):
         return Color((
             (self.red() + color.red()) // 2,

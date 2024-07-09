@@ -50,7 +50,7 @@ class NoteItem(RectItem):
     def __init__(self, x, y, w, h, color, z):
         self.grad = QtGui.QLinearGradient(QtCore.QPointF(0, 0), QtCore.QPointF(0, 1))
         self.grad.setCoordinateMode(QtGui.QGradient.CoordinateMode.ObjectMode)
-        color = Color(color)
+        color = 0.5 * Color(color)
         self.grad.setColorAt(0, Color((255, 255, 255)))
         self.grad.setColorAt(.05/h, color)
         self.grad.setColorAt(1, color * 0.5)

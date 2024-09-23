@@ -1,5 +1,6 @@
-
+import numpy as np
 from .qt import QtCore, QtGui, QtWidgets, RectItem, Color, Pen, GraphicsItemGroup
+from . import qt
 from .keyboard import Keyboard
 
 
@@ -33,8 +34,10 @@ class NotesItem(GraphicsItemGroup):
             5: (100, 255, 255, alpha),
         }
         for i, note in enumerate(notes):
+            if note.duration == 0:
+                continue
             keyspec = self.key_spec[note.pitch.key]
-            note_item = NoteItem(keyspec['x_pos'], note.start_time, keyspec['width'], note.duration, 
+            note_item = NoteItem(x=keyspec['x_pos'], y=note.start_time, w=keyspec['width'], h=note.duration, 
                                  color=colors[note.track_n], z=i)
             self.notes.append(note_item)
             self.addToGroup(note_item)
@@ -46,17 +49,22 @@ class NotesItem(GraphicsItemGroup):
         return self._bounds
 
 
-class NoteItem(RectItem):
+class NoteItem(GraphicsItemGroup):
     def __init__(self, x, y, w, h, color, z):
         self.grad = QtGui.QLinearGradient(QtCore.QPointF(0, 0), QtCore.QPointF(0, 1))
         self.grad.setCoordinateMode(QtGui.QGradient.CoordinateMode.ObjectMode)
         color = 0.5 * Color(color)
         self.grad.setColorAt(0, Color((255, 255, 255)))
-        self.grad.setColorAt(.05/h, color)
+        self.grad.setColorAt(np.clip(.05/h, 0, 1), color)
         self.grad.setColorAt(1, color * 0.5)
-        super().__init__(
-            x, y, w, h, 
-            pen=(100, 100, 100, 100),
-            brush=self.grad,
-            z=z,
-        )
+        super().__init__()
+
+        self.rect = QtWidgets.QGraphicsRectItem(x, y, w, h)
+        self.addToGroup(self.rect)
+        self.rect.setBrush(self.grad)
+        self.rect.setPen(Pen((0, 0, 0, 208)))
+        self.setZValue(z)
+
+        # self.line = QtWidgets.QGraphicsLineItem(x, y, x+w, y)
+        # self.addToGroup(self.line)
+        # self.line.setPen(Pen((255, 255, 255)))

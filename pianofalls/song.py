@@ -34,18 +34,21 @@ class Song:
 
 
 class Note:
-    def __init__(self, index, start_time, pitch, duration, track, track_n, on_msg=None, off_msg=None):
+    def __init__(self, index, start_time, pitch, duration, track, track_n, staff=1, voice=1, on_msg=None, off_msg=None):
         self.index = index
         self.start_time = start_time
         self.pitch = pitch
         self.duration = duration
         self.track = track
         self.track_n = track_n
+        self.staff = staff
+        self.voice = voice
         self.on_msg = on_msg
         self.off_msg = off_msg
 
     def __repr__(self):
-        return f'<Note {self.start_time} {self.pitch.midi_note} {self.duration}>'
+        return f'<Note track={self.track} staff={self.staff} voice={self.voice} start_time={self.start_time} pitch={self.pitch.midi_note} duration={self.duration}>'
+
 
 class Pitch:
     def __init__(self, midi_note):

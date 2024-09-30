@@ -1,6 +1,6 @@
 import zipfile
 import xml.etree.ElementTree as ET
-from .song import Song, Pitch
+from .song import Song, Pitch, Note
 
 
 def read_musicxml_file(filename):
@@ -39,40 +39,9 @@ def read_musicxml_file(filename):
         return tree.getroot()
 
 
-def parse_musicxml_content(xml_content: bytes):
-    """Parse the XML content and return root and namespace."""
-    root = ET.fromstring(xml_content)
-
-    # Get the namespace
-    if root.tag.startswith('{'):
-        namespace = root.tag.split('}')[0].strip('{')
-    else:
-        namespace = ''
-
-    def ns_tag(tag):
-        return f'{{{namespace}}}{tag}' if namespace else tag
-
-    return root, ns_tag
-
-
-def extract_parts(root, ns_tag):
-    """Extract parts from the MusicXML root."""
-    parts = root.findall(ns_tag('part'))
-    return parts
-
-
-def parse_part(part_elem, ns_tag, part_index, initial_tempo=120.0):
+def parse_part(part_elem, part_index, initial_tempo=120.0):
     """
-    Parse a <part> element and return a list of note dictionaries.
-
-    Parameters:
-    - part_elem: The XML element representing the <part>.
-    - ns_tag: A function to handle namespaces.
-    - part_index: Index of the part (track).
-    - initial_tempo: Initial tempo in BPM.
-
-    Returns:
-    - notes: List of note dictionaries parsed from the part.
+    Parse a <part> element and return a list of Note instances.
     """
     notes = []
     divisions = 1  # Default divisions per quarter note
@@ -83,62 +52,50 @@ def parse_part(part_elem, ns_tag, part_index, initial_tempo=120.0):
     ties = {}  # Keep track of ongoing ties per voice
 
     # Iterate through measures
-    for measure_elem in part_elem.findall(ns_tag('measure')):
+    for measure_elem in part_elem.findall('measure'):
         # Handle attributes (divisions, key signature, time signature)
-        attributes_elem = measure_elem.find(ns_tag('attributes'))
+        attributes_elem = measure_elem.find('attributes')
         if attributes_elem is not None:
             # Divisions
-            divisions_elem = attributes_elem.find(ns_tag('divisions'))
+            divisions_elem = attributes_elem.find('divisions')
             if divisions_elem is not None:
                 divisions = int(divisions_elem.text)
             # Key signature
-            key_elem = attributes_elem.find(ns_tag('key'))
+            key_elem = attributes_elem.find('key')
             if key_elem is not None:
-                fifths_elem = key_elem.find(ns_tag('fifths'))
+                fifths_elem = key_elem.find('fifths')
                 if fifths_elem is not None:
                     key_signature = int(fifths_elem.text)
             # Time signature
-            time_elem = attributes_elem.find(ns_tag('time'))
+            time_elem = attributes_elem.find('time')
             if time_elem is not None:
-                beats_elem = time_elem.find(ns_tag('beats'))
-                beat_type_elem = time_elem.find(ns_tag('beat-type'))
+                beats_elem = time_elem.find('beats')
+                beat_type_elem = time_elem.find('beat-type')
                 if beats_elem is not None and beat_type_elem is not None:
                     beats = int(beats_elem.text)
                     beat_type = int(beat_type_elem.text)
                     time_signature = (beats, beat_type)
 
         # Handle tempo changes within the measure
-        direction_elems = measure_elem.findall(ns_tag('direction'))
+        direction_elems = measure_elem.findall('direction')
         for direction in direction_elems:
-            sound_elem = direction.find(ns_tag('sound'))
+            sound_elem = direction.find('sound')
             if sound_elem is not None and 'tempo' in sound_elem.attrib:
                 tempo = float(sound_elem.attrib['tempo'])
 
         # Parse the measure
         measure_notes = parse_measure(
-            measure_elem, ns_tag, divisions, tempo, part_index, voice_current_times, key_signature, ties
+            measure_elem, divisions, tempo, voice_current_times, key_signature, ties
         )
         notes.extend(measure_notes)
-
+        for note in notes:
+            note.track_n = part_index
     return notes
 
 
-def parse_measure(measure_elem, ns_tag, divisions, tempo, part_index, voice_current_times, key_signature, ties):
+def parse_measure(measure_elem, divisions, tempo, voice_current_times, key_signature, ties):
     """
-    Parse a measure element and return a list of note dictionaries.
-
-    Parameters:
-    - measure_elem: The XML element representing the <measure>.
-    - ns_tag: A function to handle namespaces.
-    - divisions: Number of divisions per quarter note.
-    - tempo: Tempo in BPM.
-    - part_index: Index of the part (track).
-    - voice_current_times: Dictionary of current times for each voice.
-    - key_signature: Current key signature (number of sharps or flats).
-    - ties: Dictionary to track ongoing ties per voice.
-
-    Returns:
-    - notes: List of note dictionaries parsed from the measure.
+    Parse a measure element and return a list of Note instances.
     """
     notes = []
 
@@ -149,22 +106,22 @@ def parse_measure(measure_elem, ns_tag, divisions, tempo, part_index, voice_curr
         elem = measure_elements[i]
         tag = elem.tag
 
-        if tag == ns_tag('attributes'):
+        if tag == "attributes":
             # Handle attributes within the measure (if any)
             i += 1
 
-        elif tag == ns_tag('direction'):
+        elif tag == "direction":
             # Handle tempo changes
-            sound_elem = elem.find(ns_tag('sound'))
+            sound_elem = elem.find('sound')
             if sound_elem is not None and 'tempo' in sound_elem.attrib:
                 tempo = float(sound_elem.attrib['tempo'])
             i += 1
 
-        elif tag == ns_tag('note'):
+        elif tag == "note":
             note_elem = elem
             chord_notes = []
             # Get voice number
-            voice_elem = note_elem.find(ns_tag('voice'))
+            voice_elem = note_elem.find('voice')
             voice_number = int(voice_elem.text) if voice_elem is not None else 1
 
             # Initialize current_time for the voice if not already set
@@ -179,9 +136,9 @@ def parse_measure(measure_elem, ns_tag, divisions, tempo, part_index, voice_curr
             i += 1
             while i < len(measure_elements):
                 next_elem = measure_elements[i]
-                if next_elem.tag == ns_tag('note'):
+                if next_elem.tag == f"note":
                     # Check if this note has <chord/> element
-                    chord_elem = next_elem.find(ns_tag('chord'))
+                    chord_elem = next_elem.find('chord')
                     if chord_elem is not None:
                         chord_notes.append(next_elem)
                         i += 1
@@ -191,29 +148,29 @@ def parse_measure(measure_elem, ns_tag, divisions, tempo, part_index, voice_curr
                     break  # Not a note element
 
             # Process the chord notes
-            chord_note_dicts = []
+            chord_note_objs = []
             max_duration_divisions = 0
             for chord_note_elem in chord_notes:
-                note_data, duration_divisions, voice_number, is_chord_note, is_rest, _ = parse_note_element(
-                    chord_note_elem, ns_tag, divisions, tempo, voice_time, part_index, key_signature
+                note_obj, duration_divisions, voice_number, is_chord_note, is_rest, _ = parse_note_element(
+                    chord_note_elem, divisions, tempo, voice_time, key_signature
                 )
-                if note_data:
+                if note_obj:
                     # Handle ties
-                    tie_elems = chord_note_elem.findall(ns_tag('tie'))
+                    tie_elems = chord_note_elem.findall('tie')
                     tie_types = [tie_elem.attrib.get('type') for tie_elem in tie_elems]
 
                     if 'start' in tie_types and 'stop' not in tie_types:
                         # Start of a tie
-                        ties[voice_number] = note_data
+                        ties[voice_number] = note_obj
                         continue  # Do not add to notes yet
                     elif 'stop' in tie_types and 'start' not in tie_types:
                         # End of a tie
                         if voice_number in ties:
                             prev_note = ties.pop(voice_number)
                             # Combine durations
-                            prev_note['duration'] += note_data['duration']
+                            prev_note.duration += note_obj.duration
                             # Do not add the current note separately
-                            note_data = prev_note
+                            note_obj = prev_note
                         else:
                             # No matching tie start, add as is
                             pass
@@ -222,25 +179,25 @@ def parse_measure(measure_elem, ns_tag, divisions, tempo, part_index, voice_curr
                         if voice_number in ties:
                             prev_note = ties[voice_number]
                             # Combine durations
-                            prev_note['duration'] += note_data['duration']
+                            prev_note.duration += note_obj.duration
                             # Keep the tie ongoing
                             ties[voice_number] = prev_note
                             continue  # Do not add to notes yet
                         else:
-                            ties[voice_number] = note_data
+                            ties[voice_number] = note_obj
                             continue  # Do not add to notes yet
                     else:
                         # No tie, but check if continuing a tie
                         if voice_number in ties:
                             prev_note = ties.pop(voice_number)
-                            prev_note['duration'] += note_data['duration']
-                            note_data = prev_note
+                            prev_note.duration += note_obj.duration
+                            note_obj = prev_note
 
-                    chord_note_dicts.append(note_data)
+                    chord_note_objs.append(note_obj)
                 if duration_divisions > max_duration_divisions:
                     max_duration_divisions = duration_divisions
 
-            notes.extend(chord_note_dicts)
+            notes.extend(chord_note_objs)
 
             # Update current_time for the voice after processing the chord
             duration_seconds = (max_duration_divisions / divisions) * (60.0 / tempo)
@@ -253,7 +210,7 @@ def parse_measure(measure_elem, ns_tag, divisions, tempo, part_index, voice_curr
     return notes
 
 
-def parse_note(note_elem, ns_tag, divisions, tempo, current_time, part_index):
+def parse_note(note_elem_tag, divisions, tempo, current_time, part_index):
     """
     Parse a note element, handling chords and returns a list of note dictionaries.
 
@@ -280,7 +237,7 @@ def parse_note(note_elem, ns_tag, divisions, tempo, current_time, part_index):
 
     # Parse the note
     note_data, duration_divisions, voice_number, is_chord_note, is_rest, updated_current_time = parse_note_element(
-        note_elem, ns_tag, divisions, tempo, current_time, part_index
+        note_elem_tag, divisions, tempo, current_time, part_index
     )
 
     if note_data:
@@ -299,10 +256,10 @@ def parse_note(note_elem, ns_tag, divisions, tempo, current_time, part_index):
     return note_dicts, current_time
 
 
-def parse_note_element(elem, ns_tag, divisions, tempo, current_time, part_index, key_signature):
+def parse_note_element(elem, divisions, tempo, current_time, key_signature):
     """
     Parse a MusicXML <note> element and return:
-    - note_dict: The note dictionary or None if it's a rest.
+    - note_obj: The Note instance or None if it's a rest.
     - duration_divisions: The duration of the note in divisions.
     - voice_number: The voice number of the note.
     - is_chord: Boolean indicating if the note is part of a chord.
@@ -310,18 +267,18 @@ def parse_note_element(elem, ns_tag, divisions, tempo, current_time, part_index,
     - updated_current_time: The updated current_time after the note.
     """
     # Get voice number (default to 1 if not specified)
-    voice_elem = elem.find(ns_tag('voice'))
+    voice_elem = elem.find('voice')
     voice_number = int(voice_elem.text) if voice_elem is not None else 1
 
     # Get duration in divisions
-    duration_elem = elem.find(ns_tag('duration'))
+    duration_elem = elem.find('duration')
     duration_divisions = int(duration_elem.text) if duration_elem is not None else 0
 
     # Handle time-modification (e.g., tuplets)
-    time_mod_elem = elem.find(ns_tag('time-modification'))
+    time_mod_elem = elem.find('time-modification')
     if time_mod_elem is not None:
-        actual_notes_elem = time_mod_elem.find(ns_tag('actual-notes'))
-        normal_notes_elem = time_mod_elem.find(ns_tag('normal-notes'))
+        actual_notes_elem = time_mod_elem.find('actual-notes')
+        normal_notes_elem = time_mod_elem.find('normal-notes')
         if actual_notes_elem is not None and normal_notes_elem is not None:
             actual_notes = int(actual_notes_elem.text)
             normal_notes = int(normal_notes_elem.text)
@@ -329,13 +286,13 @@ def parse_note_element(elem, ns_tag, divisions, tempo, current_time, part_index,
             duration_divisions *= (normal_notes / actual_notes)
 
     # Check for 'chord' element
-    is_chord = elem.find(ns_tag('chord')) is not None
+    is_chord = elem.find('chord') is not None
 
     # Check if it's a rest
-    is_rest = elem.find(ns_tag('rest')) is not None
+    is_rest = elem.find('rest') is not None
 
     # Get staff number (default to 1 if not specified)
-    staff_elem = elem.find(ns_tag('staff'))
+    staff_elem = elem.find('staff')
     staff_number = int(staff_elem.text) if staff_elem is not None else 1
 
     # For rests, advance current_time by the duration
@@ -348,11 +305,11 @@ def parse_note_element(elem, ns_tag, divisions, tempo, current_time, part_index,
     start_time = current_time
 
     # Process note
-    pitch_elem = elem.find(ns_tag('pitch'))
+    pitch_elem = elem.find('pitch')
     if pitch_elem is not None:
-        step = pitch_elem.find(ns_tag('step')).text
-        octave = int(pitch_elem.find(ns_tag('octave')).text)
-        alter_elem = pitch_elem.find(ns_tag('alter'))
+        step = pitch_elem.find('step').text
+        octave = int(pitch_elem.find('octave').text)
+        alter_elem = pitch_elem.find('alter')
         alter = int(alter_elem.text) if alter_elem is not None else 0
 
         # Adjust alter based on key signature
@@ -384,31 +341,21 @@ def parse_note_element(elem, ns_tag, divisions, tempo, current_time, part_index,
         # Calculate duration in seconds
         duration = (duration_divisions / divisions) * (60.0 / tempo)
 
-        # Create the note dictionary
-        note_dict = {
-            'start_time': start_time,
-            'pitch': Pitch(midi_note=midi_note),
-            'duration': duration,
-            'track': part_index,
-            'track_n': part_index,
-            'on_msg': None,
-            'off_msg': None,
-            'staff': staff_number,
-            'voice': voice_number
-        }
+        # Create the note dict
+        note_obj = Note(
+            start_time=start_time,
+            pitch=Pitch(midi_note=midi_note),
+            duration=duration,
+            staff=staff_number,
+            voice=voice_number
+        )
 
         # For chords, do not update current_time here
         updated_current_time = current_time + (duration if not is_chord else 0)
 
-        return note_dict, duration_divisions, voice_number, is_chord, is_rest, updated_current_time
+        return note_obj, duration_divisions, voice_number, is_chord, is_rest, updated_current_time
 
     return None, duration_divisions, voice_number, is_chord, is_rest, current_time
-
-
-def ns_tag(ns_map):
-    def tag(name):
-        return f"{{{ns_map['']} if '' in ns_map else ''}}{name}"
-    return tag
 
 
 def load_musicxml(filename):
@@ -420,29 +367,13 @@ def load_musicxml(filename):
     # Read the MusicXML file using read_musicxml_file
     root = read_musicxml_file(filename)
     
-    # Namespace handling
-    if root.tag.startswith('{'):
-        ns_uri = root.tag[root.tag.find('{')+1:root.tag.find('}')]
-        def ns_tag(tag):
-            return f'{{{ns_uri}}}{tag}'
-    else:
-        def ns_tag(tag):
-            return tag  # No namespace
-    
-    # Get initial tempo from the first direction element, default to 120
     initial_tempo = 120.0
-    first_direction = root.find('.//' + ns_tag('direction'))
-    if first_direction is not None:
-        sound_elem = first_direction.find(ns_tag('sound'))
-        if sound_elem is not None and 'tempo' in sound_elem.attrib:
-            initial_tempo = float(sound_elem.attrib['tempo'])
     
     # Process each part
     notes = []
-    for part_index, part_elem in enumerate(root.findall(ns_tag('part'))):
+    for part_index, part_elem in enumerate(root.findall('part')):
         part_notes = parse_part(
             part_elem,
-            ns_tag=ns_tag,
             part_index=part_index,
             initial_tempo=initial_tempo
         )
@@ -451,5 +382,3 @@ def load_musicxml(filename):
     # Create a Song instance with the notes
     song = Song(notes=notes)
     return song
-
-

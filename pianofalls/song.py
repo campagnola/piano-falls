@@ -5,7 +5,16 @@ class Song:
     def __init__(self, notes):
         # *notes* is a list of dicts describing each note
         # keys are: start_time, pitch, duration, track, track_n, on_msg, off_msg
-        self.notes = [Note(index=i, **n) for i,n in enumerate(notes)]
+        self.notes = []
+        for i, src_note in enumerate(notes):
+            if isinstance(src_note, dict):
+                self.notes.append(Note(index=i, **src_note))
+            elif isinstance(src_note, Note):
+                src_note.index = i
+                self.notes.append(src_note)
+            else:
+                raise ValueError(f'Invalid note type: {type(src_note)}')
+
         self.notes.sort(key=lambda n: n.start_time)
 
         # Lookup table for quickly finding the note at a given time
@@ -34,11 +43,11 @@ class Song:
 
 
 class Note:
-    def __init__(self, index, start_time, pitch, duration, track, track_n, staff=1, voice=1, on_msg=None, off_msg=None):
-        self.index = index
+    def __init__(self, start_time, pitch, duration, index=None, track=None, track_n=None, staff=1, voice=1, on_msg=None, off_msg=None):
         self.start_time = start_time
         self.pitch = pitch
         self.duration = duration
+        self.index = index
         self.track = track
         self.track_n = track_n
         self.staff = staff

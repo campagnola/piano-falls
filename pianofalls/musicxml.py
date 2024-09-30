@@ -7,7 +7,7 @@ def read_musicxml_file(filename):
     import zipfile
     import xml.etree.ElementTree as ET
 
-    if filename.endswith('.mxl'):
+    if filename.lower().endswith('.mxl'):
         # It's a compressed MusicXML file
         with zipfile.ZipFile(filename, 'r') as zf:
             # Try to read container.xml to find the rootfile
@@ -15,7 +15,7 @@ def read_musicxml_file(filename):
                 container_data = zf.read('META-INF/container.xml')
                 container_root = ET.fromstring(container_data)
                 # Find the rootfile
-                rootfile_elem = container_root.find('.//{urn:oasis:names:tc:opendocument:xmlns:container}rootfile')
+                rootfile_elem = container_root.find('.//rootfile')
                 if rootfile_elem is not None:
                     full_path = rootfile_elem.attrib['full-path']
                     # Read the main score file
@@ -28,7 +28,7 @@ def read_musicxml_file(filename):
 
             # Fallback: search for the first .xml or .musicxml file in the zip archive
             for name in zf.namelist():
-                if name.endswith('.xml') or name.endswith('.musicxml'):
+                if name.endswith('.xml') or name.endswith('.musicxml') and '/' not in name:
                     score_data = zf.read(name)
                     root = ET.fromstring(score_data)
                     return root
@@ -379,6 +379,8 @@ def load_musicxml(filename):
         )
         notes.extend(part_notes)
     
+    assert notes, 'No notes found in the MusicXML file'
+
     # Create a Song instance with the notes
     song = Song(notes=notes)
     return song

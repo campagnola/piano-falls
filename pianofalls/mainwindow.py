@@ -66,6 +66,8 @@ class MainWindow(QtWidgets.QWidget):
         else:
             raise ValueError(f'Unsupported file type: {filename}')
 
+        self.song = song
+        
         self.overview.set_song(song)
         self.view.set_song(song)
         self.scroller.set_song(song)

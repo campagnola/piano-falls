@@ -39,7 +39,7 @@ def read_musicxml_file(filename):
         return tree.getroot()
 
 
-def parse_part(part_elem, part_index, initial_tempo=120.0):
+def parse_part(part_elem, initial_tempo=120.0):
     """
     Parse a <part> element and return a list of Note instances.
     """
@@ -56,7 +56,8 @@ def parse_part(part_elem, part_index, initial_tempo=120.0):
         # Handle attributes (divisions, key signature, time signature)
         attributes_elem = measure_elem.find('attributes')
         if attributes_elem is not None:
-            # Divisions
+            # Divisions descrbe the number of divisions per quarter note.
+            # Note durations are expressed in terms of these divisions.
             divisions_elem = attributes_elem.find('divisions')
             if divisions_elem is not None:
                 divisions = int(divisions_elem.text)
@@ -88,8 +89,6 @@ def parse_part(part_elem, part_index, initial_tempo=120.0):
             measure_elem, divisions, tempo, voice_current_times, key_signature, ties
         )
         notes.extend(measure_notes)
-        for note in notes:
-            note.track_n = part_index
     return notes
 
 
@@ -210,7 +209,7 @@ def parse_measure(measure_elem, divisions, tempo, voice_current_times, key_signa
     return notes
 
 
-def parse_note(note_elem_tag, divisions, tempo, current_time, part_index):
+def parse_note(note_elem, divisions, tempo, current_time, part_index):
     """
     Parse a note element, handling chords and returns a list of note dictionaries.
 
@@ -231,13 +230,13 @@ def parse_note(note_elem_tag, divisions, tempo, current_time, part_index):
     is_chord = False
 
     # Check if this note is part of a chord
-    chord_elem = note_elem.find(ns_tag('chord'))
+    chord_elem = note_elem.find('chord')
     if chord_elem is not None:
         is_chord = True
 
     # Parse the note
     note_data, duration_divisions, voice_number, is_chord_note, is_rest, updated_current_time = parse_note_element(
-        note_elem_tag, divisions, tempo, current_time, part_index
+        note_elem, divisions, tempo, current_time, part_index
     )
 
     if note_data:
@@ -367,16 +366,35 @@ def load_musicxml(filename):
     # Read the MusicXML file using read_musicxml_file
     root = read_musicxml_file(filename)
     
-    initial_tempo = 120.0
-    
+    # read the part list
+    part_info = {}
+    part_list_elem = root.find('part-list')
+    if part_list_elem is not None:
+        for score_part_elem in part_list_elem.findall('score-part'):
+            part_id = score_part_elem.attrib['id']
+            part_info[part_id] = {}
+            part_name_elem = score_part_elem.find('part-name')
+            if part_name_elem is not None:
+                part_info[part_id]['name'] = part_name_elem.text
+            # instrument
+            instrument_elem = score_part_elem.find('score-instrument')
+            if instrument_elem is not None:
+                instrument_name_elem = instrument_elem.find('instrument-name')
+                if instrument_name_elem is not None:
+                    part_info[part_id]['instrument'] = instrument_name_elem.text
+
     # Process each part
     notes = []
-    for part_index, part_elem in enumerate(root.findall('part')):
-        part_notes = parse_part(
-            part_elem,
-            part_index=part_index,
-            initial_tempo=initial_tempo
-        )
+    parts = root.findall('part')
+    assert parts, 'No parts found in the MusicXML file'
+    for part_index, part_elem in enumerate(parts):
+        # read notes for this part
+        part_notes = parse_part(part_elem)
+        # annotate notes with part information
+        for note in part_notes:
+            note.track_n = part_index
+            part_id = part_elem.attrib['id']
+            note.track = part_info.get(part_id, {}).get('name', f'Part {part_index}')
         notes.extend(part_notes)
     
     assert notes, 'No notes found in the MusicXML file'

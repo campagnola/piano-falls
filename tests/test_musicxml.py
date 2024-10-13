@@ -354,3 +354,77 @@ def test_note_pitch_with_flat_key_signature():
     # Note A♯ with explicit alter, should be A♯ (MIDI note 70)
     # Alter from <alter> element takes precedence
     assert note_a_sharp.pitch.midi_note == 70  # A♯4
+
+
+def test_get_voice_and_staff():
+    parser = MusicXMLParser()
+    parser.ns_tag = lambda tag: tag  # No namespace
+    note_xml = '''
+    <note>
+        <voice>2</voice>
+        <staff>3</staff>
+    </note>
+    '''
+    note_elem = ET.fromstring(note_xml)
+    voice_number, staff_number = parser.get_voice_and_staff(note_elem)
+    assert voice_number == 2
+    assert staff_number == 3
+
+
+def test_get_duration():
+    parser = MusicXMLParser()
+    parser.ns_tag = lambda tag: tag  # No namespace
+    parser.divisions = 4  # Example divisions
+    parser.tempo = 120.0  # Example tempo
+    note_xml = '''
+    <note>
+        <duration>4</duration>
+    </note>
+    '''
+    note_elem = ET.fromstring(note_xml)
+    duration_divisions, duration = parser.get_duration(note_elem)
+    assert duration_divisions == 4
+    assert duration == (4 / 4) * (60.0 / 120.0)  # Expected duration in seconds
+
+
+def test_process_pitch():
+    parser = MusicXMLParser()
+    parser.ns_tag = lambda tag: tag  # No namespace
+    parser.key_signature = -2  # Key of B♭ major (2 flats)
+    note_xml = '''
+    <note>
+        <pitch>
+            <step>E</step>
+            <octave>5</octave>
+        </pitch>
+    </note>
+    '''
+    note_elem = ET.fromstring(note_xml)
+    midi_note = parser.process_pitch(note_elem)
+    assert midi_note == 75  # E♭5
+
+
+def test_parse_note_element():
+    parser = MusicXMLParser()
+    parser.ns_tag = lambda tag: tag  # No namespace
+    parser.divisions = 1
+    parser.tempo = 120.0
+    parser.key_signature = -2  # Key of B♭ major
+    note_xml = '''
+    <note>
+        <duration>1</duration>
+        <voice>1</voice>
+        <pitch>
+            <step>B</step>
+            <octave>4</octave>
+        </pitch>
+    </note>
+    '''
+    note_elem = ET.fromstring(note_xml)
+    note_obj, duration_seconds = parser.parse_note_element(note_elem)
+    assert note_obj is not None
+    assert note_obj.pitch.midi_note == 70  # B♭4
+    assert note_obj.duration == (1 / parser.divisions) * (60.0 / parser.tempo)
+    assert note_obj.voice == 1
+    assert duration_seconds == note_obj.duration
+

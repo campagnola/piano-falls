@@ -245,11 +245,19 @@ class MusicXMLParser:
         if sound_elem is not None and 'tempo' in sound_elem.attrib:
             self.tempo = float(sound_elem.attrib['tempo'])
 
-    def parse_note_element(self, note_elem):
+    def get_voice_and_staff(self, note_elem):
         # Get voice number (default to 1 if not specified)
         voice_elem = note_elem.find(self.ns_tag('voice'))
         voice_number = int(voice_elem.text) if voice_elem is not None else 1
 
+        # Get staff number (default to 1 if not specified)
+        staff_elem = note_elem.find(self.ns_tag('staff'))
+        staff_number = int(staff_elem.text) if staff_elem is not None else 1
+
+        return voice_number, staff_number
+
+
+    def get_duration(self, note_elem):
         # Get duration in divisions
         duration_elem = note_elem.find(self.ns_tag('duration'))
         duration_divisions = int(duration_elem.text) if duration_elem is not None else 0
@@ -263,20 +271,91 @@ class MusicXMLParser:
                 actual_notes = int(actual_notes_elem.text)
                 normal_notes = int(normal_notes_elem.text)
                 # Adjust duration_divisions
-                duration_divisions *= (normal_notes / actual_notes)
+                duration_divisions = duration_divisions * normal_notes / actual_notes
 
-        # Check for 'chord' element
-        is_chord = note_elem.find(self.ns_tag('chord')) is not None
+        # Calculate duration in seconds
+        duration = (duration_divisions / self.divisions) * (60.0 / self.tempo)
+        return duration_divisions, duration
 
+
+    def process_pitch(self, note_elem):
+        pitch_elem = note_elem.find(self.ns_tag('pitch'))
+        if pitch_elem is None:
+            return None  # Rest or unpitched note
+
+        step = pitch_elem.find(self.ns_tag('step')).text
+        octave = int(pitch_elem.find(self.ns_tag('octave')).text)
+
+        # Initial alter value
+        alter_elem = pitch_elem.find(self.ns_tag('alter'))
+        alter = int(alter_elem.text) if alter_elem is not None else 0
+
+        # Process accidental element if present
+        accidental_elem = note_elem.find(self.ns_tag('accidental'))
+        if accidental_elem is not None:
+            accidental_text = accidental_elem.text.strip()
+            # Map accidental to alter value
+            accidental_map = {
+                'flat': -1,
+                'sharp': 1,
+                'natural': 0,
+                'double-flat': -2,
+                'double-sharp': 2,
+                'flat-flat': -2,
+                'sharp-sharp': 2,
+            }
+            accidental_alter = accidental_map.get(accidental_text)
+            if accidental_alter is not None:
+                alter = accidental_alter
+
+        # Adjust for key signature if no alter or accidental is specified
+        if alter_elem is None and accidental_elem is None:
+            accidentals = self.get_key_signature_accidentals()
+            if step in accidentals:
+                if self.key_signature > 0:
+                    alter += 1  # Apply sharp
+                elif self.key_signature < 0:
+                    alter -= 1  # Apply flat
+
+        # Map step to semitone
+        step_to_semitone = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}
+        semitone = step_to_semitone[step] + alter
+
+        # Calculate MIDI note number
+        midi_note = (octave + 1) * 12 + semitone
+
+        return midi_note
+
+
+    def get_key_signature_accidentals(self):
+        key_signature_accidentals = {
+            -7: ['B', 'E', 'A', 'D', 'G', 'C', 'F'],
+            -6: ['B', 'E', 'A', 'D', 'G', 'C'],
+            -5: ['B', 'E', 'A', 'D', 'G'],
+            -4: ['B', 'E', 'A', 'D'],
+            -3: ['B', 'E', 'A'],
+            -2: ['B', 'E'],
+            -1: ['B'],
+            0: [],
+            1: ['F'],
+            2: ['F', 'C'],
+            3: ['F', 'C', 'G'],
+            4: ['F', 'C', 'G', 'D'],
+            5: ['F', 'C', 'G', 'D', 'A'],
+            6: ['F', 'C', 'G', 'D', 'A', 'E'],
+            7: ['F', 'C', 'G', 'D', 'A', 'E', 'B'],
+        }
+        return key_signature_accidentals.get(self.key_signature, [])
+
+    def parse_note_element(self, note_elem):
         # Check if it's a rest
         is_rest = note_elem.find(self.ns_tag('rest')) is not None
 
-        # Get staff number (default to 1 if not specified)
-        staff_elem = note_elem.find(self.ns_tag('staff'))
-        staff_number = int(staff_elem.text) if staff_elem is not None else 1
+        # Get voice and staff numbers
+        voice_number, staff_number = self.get_voice_and_staff(note_elem)
 
-        # For rests, advance current_time by the duration
-        duration = (duration_divisions / self.divisions) * (60.0 / self.tempo)
+        # Get duration
+        duration_divisions, duration = self.get_duration(note_elem)
         duration_seconds = duration
 
         if is_rest:
@@ -287,81 +366,18 @@ class MusicXMLParser:
         current_time = self.voice_current_times.get(voice_number, 0.0)
 
         # Process pitch
-        pitch_elem = note_elem.find(self.ns_tag('pitch'))
-        if pitch_elem is not None:
-            step = pitch_elem.find(self.ns_tag('step')).text
-            octave = int(pitch_elem.find(self.ns_tag('octave')).text)
-            alter_elem = pitch_elem.find(self.ns_tag('alter'))
-            alter = int(alter_elem.text) if alter_elem is not None else 0
+        midi_note = self.process_pitch(note_elem)
+        if midi_note is None:
+            # Unpitched note or rest
+            return None, duration_seconds
 
-            # Process accidental element if present
-            accidental_elem = note_elem.find(self.ns_tag('accidental'))
-            if accidental_elem is not None:
-                accidental_text = accidental_elem.text
-                # Map accidental to alter value
-                accidental_map = {
-                    'flat': -1,
-                    'sharp': 1,
-                    'natural': 0,
-                    'double-flat': -2,
-                    'double-sharp': 2,
-                    'flat-flat': -2,
-                    'sharp-sharp': 2,
-                }
-                accidental_alter = accidental_map.get(accidental_text)
-                if accidental_alter is not None:
-                    alter = accidental_alter
+        # Create the note object
+        note_obj = Note(
+            start_time=current_time,
+            pitch=Pitch(midi_note=midi_note),
+            duration=duration,
+            staff=staff_number,
+            voice=voice_number
+        )
 
-            # Determine if we should adjust for key signature
-            adjust_for_key_signature = (alter_elem is None) and (accidental_elem is None)
-
-            # Adjust alter based on key signature
-            if adjust_for_key_signature:
-                key_signature_accidentals = {
-                    -7: ['B', 'E', 'A', 'D', 'G', 'C', 'F'],
-                    -6: ['B', 'E', 'A', 'D', 'G', 'C'],
-                    -5: ['B', 'E', 'A', 'D', 'G'],
-                    -4: ['B', 'E', 'A', 'D'],
-                    -3: ['B', 'E', 'A'],
-                    -2: ['B', 'E'],
-                    -1: ['B'],
-                    0: [],
-                    1: ['F'],
-                    2: ['F', 'C'],
-                    3: ['F', 'C', 'G'],
-                    4: ['F', 'C', 'G', 'D'],
-                    5: ['F', 'C', 'G', 'D', 'A'],
-                    6: ['F', 'C', 'G', 'D', 'A', 'E'],
-                    7: ['F', 'C', 'G', 'D', 'A', 'E', 'B'],
-                }
-                accidentals = key_signature_accidentals.get(self.key_signature, [])
-                if step in accidentals:
-                    if self.key_signature > 0:
-                        alter += 1  # Apply sharp
-                    elif self.key_signature < 0:
-                        alter -= 1  # Apply flat
-
-            # Map step to semitone
-            step_to_semitone = {'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11}
-            semitone = step_to_semitone[step] + alter
-
-            # Normalize semitone to be between 0 and 11
-            semitone = semitone % 12
-
-            # Calculate MIDI note number
-            midi_note = (octave + 1) * 12 + semitone
-
-            # Create the note object
-            note_obj = Note(
-                start_time=current_time,
-                pitch=Pitch(midi_note=midi_note),
-                duration=duration,
-                staff=staff_number,
-                voice=voice_number
-            )
-
-            return note_obj, duration_seconds
-
-        return None, duration_seconds
-
-        return None, duration_seconds
+        return note_obj, duration_seconds

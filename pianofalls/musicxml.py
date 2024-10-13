@@ -149,25 +149,13 @@ class MusicXMLParser:
         """
         notes = []
 
-        # Get the time signature for this measure
-        beats, beat_type = self.time_signature
-        # Calculate the duration of one beat
-        beat_duration = (60.0 / self.tempo) * (4 / beat_type)
-        # Calculate the expected measure duration
-        expected_measure_duration = beats * beat_duration
-
-        # Check for incomplete measures (e.g., pickup measures)
+        # Check if the measure is implicit (e.g., pickup measure)
         implicit = measure_elem.attrib.get('implicit', 'no') == 'yes'
-        if implicit:
-            # For implicit measures, set measure_duration to the sum of note durations
-            measure_duration = 0.0
-        else:
-            measure_duration = expected_measure_duration
 
-        # Reset voice_current_times for the new measure
-        self.voice_current_times = {}
+        # Initialize measure start time
+        measure_start_time = self.cumulative_time
 
-        # Get all measure child elements in order
+        # Process measure elements
         measure_elements = list(measure_elem)
         i = 0
         while i < len(measure_elements):
@@ -177,46 +165,142 @@ class MusicXMLParser:
             if tag == "attributes":
                 # Handle attributes within the measure
                 self.parse_attributes(elem)
-                # Recalculate beat_duration and expected_measure_duration if time signature changed
-                beats, beat_type = self.time_signature
-                beat_duration = (60.0 / self.tempo) * (4 / beat_type)
-                expected_measure_duration = beats * beat_duration
-                if not implicit:
-                    measure_duration = expected_measure_duration
                 i += 1
 
             elif tag == "direction":
                 # Handle directions (e.g., tempo changes)
                 self.parse_direction(elem)
-                # Recalculate beat_duration and expected_measure_duration if tempo changed
-                beat_duration = (60.0 / self.tempo) * (4 / beat_type)
-                expected_measure_duration = beats * beat_duration
-                if not implicit:
-                    measure_duration = expected_measure_duration
                 i += 1
 
             elif tag == "note":
-                # Parse the note
-                note, duration_seconds = self.parse_note_element(elem)
-                if note:
-                    notes.append(note)
-                # Update voice current times
-                voice_number = note.voice if note else None
-                if voice_number:
-                    if voice_number not in self.voice_current_times:
-                        self.voice_current_times[voice_number] = 0.0
-                    self.voice_current_times[voice_number] += duration_seconds
-                    if implicit:
-                        # Accumulate measure_duration for implicit measures
-                        if self.voice_current_times[voice_number] > measure_duration:
-                            measure_duration = self.voice_current_times[voice_number]
+                # Process note elements
+                note_elems, i = self.collect_chord_notes(measure_elements, i)
+                new_notes = self.process_notes(note_elems, measure_start_time)
+                notes.extend(new_notes)
+
+            elif tag in ("backup", "forward"):
+                # Handle backup and forward elements
+                self.handle_backup_forward(elem, tag)
                 i += 1
 
             else:
-                # Other elements
+                # Other elements are ignored for now
                 i += 1
 
+        # Calculate measure duration
+        measure_duration = self.calculate_measure_duration(measure_start_time, implicit)
+
         return notes, measure_duration
+
+    def collect_chord_notes(self, measure_elements, index):
+        """
+        Collects notes that are part of the same chord starting from the given index.
+
+        Returns:
+        - chord_notes: List of note elements that form the chord.
+        - next_index: The index to continue parsing from.
+        """
+        note_elem = measure_elements[index]
+        chord_notes = [note_elem]
+        index += 1
+        while index < len(measure_elements):
+            next_elem = measure_elements[index]
+            next_tag = self.get_local_tag(next_elem.tag)
+            if next_tag == "note":
+                chord_elem = next_elem.find(self.ns_tag('chord'))
+                if chord_elem is not None:
+                    chord_notes.append(next_elem)
+                    index += 1
+                else:
+                    break  # Not a chord note
+            else:
+                break  # Not a note
+        return chord_notes, index
+
+    def process_notes(self, note_elems, measure_start_time):
+        """
+        Processes a list of note elements (possibly forming a chord) and returns Note objects.
+
+        Returns:
+        - notes: List of Note instances.
+        """
+        notes = []
+        first_note_elem = note_elems[0]
+        voice_number = self.get_voice_and_staff(first_note_elem)[0]
+
+        # Initialize current_time for this voice if not already set
+        if voice_number not in self.voice_current_times:
+            self.voice_current_times[voice_number] = measure_start_time
+        current_time = self.voice_current_times[voice_number]
+
+        # Process all chord notes
+        duration_seconds = None
+        for note_elem in note_elems:
+            note_obj, note_duration_seconds, note_voice_number = self.parse_note_element(
+                note_elem, current_time_override=current_time)
+            if note_obj:
+                notes.append(note_obj)
+            duration_seconds = note_duration_seconds  # All chord notes should have the same duration
+
+        # Advance current_time for the voice after processing the chord or note/rest
+        self.voice_current_times[voice_number] = current_time + duration_seconds
+
+        return notes
+
+    def handle_backup_forward(self, elem, tag):
+        """
+        Handles backup and forward elements to adjust the current time.
+
+        Parameters:
+        - elem: The XML element representing the backup or forward.
+        - tag: The tag name ('backup' or 'forward').
+        """
+        duration_elem = elem.find(self.ns_tag('duration'))
+        if duration_elem is not None:
+            duration_divisions = int(duration_elem.text)
+            duration = (duration_divisions / self.divisions) * (60.0 / self.tempo)
+            # Adjust current_time for all voices
+            for voice in self.voice_current_times:
+                if tag == "backup":
+                    self.voice_current_times[voice] -= duration
+                elif tag == "forward":
+                    self.voice_current_times[voice] += duration
+
+    def calculate_measure_duration(self, measure_start_time, implicit):
+        """
+        Calculates the duration of the measure.
+
+        Parameters:
+        - measure_start_time: The start time of the measure.
+        - implicit: Boolean indicating if the measure is implicit (pickup measure).
+
+        Returns:
+        - measure_duration: The duration of the measure in seconds.
+        """
+        # Get the expected measure duration based on time signature
+        beats, beat_type = self.time_signature
+        # Calculate the duration of one beat in seconds
+        beat_duration = (60.0 / self.tempo) * (4 / beat_type)
+        expected_measure_duration = beats * beat_duration
+
+        if implicit:
+            # For implicit measures, measure duration is the maximum of voice times minus measure start time
+            measure_end_time = max(self.voice_current_times.values()) if self.voice_current_times else measure_start_time
+            measure_duration = measure_end_time - measure_start_time
+        else:
+            # For explicit measures, measure duration is expected_measure_duration
+            measure_duration = expected_measure_duration
+
+            # If the total duration of notes and rests is less than expected, we need to adjust the voice_current_times
+            # Add implicit rests to fill the measure
+            for voice in self.voice_current_times:
+                voice_time = self.voice_current_times[voice]
+                if voice_time - measure_start_time < expected_measure_duration:
+                    # Advance the current_time to the end of the measure
+                    self.voice_current_times[voice] = measure_start_time + expected_measure_duration
+
+        return measure_duration
+
 
     def parse_attributes(self, attributes_elem):
         # Divisions
@@ -347,7 +431,7 @@ class MusicXMLParser:
         }
         return key_signature_accidentals.get(self.key_signature, [])
 
-    def parse_note_element(self, note_elem):
+    def parse_note_element(self, note_elem, current_time_override=None):
         # Check if it's a rest
         is_rest = note_elem.find(self.ns_tag('rest')) is not None
 
@@ -358,26 +442,29 @@ class MusicXMLParser:
         duration_divisions, duration = self.get_duration(note_elem)
         duration_seconds = duration
 
-        if is_rest:
-            # For rests, we may not need to create a Note object
-            return None, duration_seconds
-
         # Get the current_time for this voice
-        current_time = self.voice_current_times.get(voice_number, 0.0)
+        if current_time_override is not None:
+            current_time = current_time_override
+        else:
+            current_time = self.voice_current_times.get(voice_number, 0.0)
 
-        # Process pitch
-        midi_note = self.process_pitch(note_elem)
-        if midi_note is None:
-            # Unpitched note or rest
-            return None, duration_seconds
+        if is_rest:
+            # Return None since we don't need to create a Note object for a rest
+            return None, duration_seconds, voice_number
+        else:
+            # Process pitch
+            midi_note = self.process_pitch(note_elem)
+            if midi_note is None:
+                # Unpitched note or rest
+                return None, duration_seconds, voice_number
 
-        # Create the note object
-        note_obj = Note(
-            start_time=current_time,
-            pitch=Pitch(midi_note=midi_note),
-            duration=duration,
-            staff=staff_number,
-            voice=voice_number
-        )
+            # Create the note object
+            note_obj = Note(
+                start_time=current_time,
+                pitch=Pitch(midi_note=midi_note),
+                duration=duration,
+                staff=staff_number,
+                voice=voice_number
+            )
 
-        return note_obj, duration_seconds
+            return note_obj, duration_seconds, voice_number

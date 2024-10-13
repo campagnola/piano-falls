@@ -155,7 +155,7 @@ def test_measure_duration_from_time_signature():
               <step>C</step>
               <octave>4</octave>
             </pitch>
-            <duration>4</duration>
+            <duration>16</duration>  <!-- Correct duration for a whole note -->
             <type>whole</type>
           </note>
           <!-- Missing notes/rests to fill the measure -->
@@ -166,7 +166,7 @@ def test_measure_duration_from_time_signature():
               <step>D</step>
               <octave>4</octave>
             </pitch>
-            <duration>4</duration>
+            <duration>16</duration>  <!-- Correct duration for a whole note -->
             <type>whole</type>
           </note>
         </measure>
@@ -192,21 +192,20 @@ def test_measure_duration_from_time_signature():
     # Time signature is 4/4
     beats = 4
     beat_type = 4
-    beat_duration = (60.0 / tempo) * (4 / beat_type)
+    beat_duration = (60.0 / tempo) * (4 / beat_type)  # 0.5 seconds per beat
     expected_measure_duration = beats * beat_duration  # 2.0 seconds
 
     # Note 1 (Measure 1)
     assert note1.pitch.midi_note == 60  # C4
     assert note1.start_time == 0.0
-    duration_note1 = (4 / parser.divisions) * (60 / tempo)  # divisions=4, duration=4
-    assert note1.duration == duration_note1
+    duration_note1 = (16 / parser.divisions) * (60.0 / tempo)  # divisions=4, duration=16
+    assert note1.duration == duration_note1  # Should be 2.0 seconds
 
-    # The measure duration should be 2.0 seconds
-    # Even though the note duration is shorter, the measure should be 2.0 seconds
-    assert parser.cumulative_time == expected_measure_duration * 2  # Two measures
+    # Cumulative time after measure 1
+    assert parser.cumulative_time == expected_measure_duration  # 2.0 seconds
 
     # Note 2 (Measure 2)
-    expected_start_time_note2 = expected_measure_duration  # Starts at 2.0 seconds
+    expected_start_time_note2 = parser.cumulative_time  # Should be 2.0 seconds
     assert note2.start_time == expected_start_time_note2
     duration_note2 = duration_note1
     assert note2.duration == duration_note2
@@ -229,7 +228,7 @@ def test_pickup_measure():
               <step>G</step>
               <octave>4</octave>
             </pitch>
-            <duration>2</duration>
+            <duration>8</duration>  <!-- Correct duration for a half note -->
             <type>half</type>
           </note>
         </measure>
@@ -239,7 +238,7 @@ def test_pickup_measure():
               <step>C</step>
               <octave>4</octave>
             </pitch>
-            <duration>4</duration>
+            <duration>16</duration>  <!-- Correct duration for a whole note -->
             <type>whole</type>
           </note>
         </measure>
@@ -265,22 +264,22 @@ def test_pickup_measure():
     # Time signature is 4/4
     beats = 4
     beat_type = 4
-    beat_duration = (60.0 / tempo) * (4 / beat_type)
+    beat_duration = (60.0 / tempo) * (4 / beat_type)  # 0.5 seconds per beat
     expected_measure_duration = beats * beat_duration  # 2.0 seconds
 
     # Note 1 (Pickup Measure)
     assert note1.pitch.midi_note == 67  # G4
     assert note1.start_time == 0.0
-    duration_note1 = (2 / parser.divisions) * (60 / tempo)  # divisions=4, duration=2
-    assert note1.duration == duration_note1
+    duration_note1 = (8 / parser.divisions) * (60.0 / tempo)  # divisions=4, duration=8
+    assert note1.duration == duration_note1  # Should be 1.0 seconds
 
-    # Since the pickup measure is implicit, cumulative_time should be equal to the duration of note1
-    assert parser.cumulative_time == duration_note1 + expected_measure_duration  # Total time after both measures
+    # Cumulative time after pickup measure
+    assert parser.cumulative_time == duration_note1  # 1.0 seconds
 
     # Note 2 (Measure 2)
-    expected_start_time_note2 = duration_note1  # Starts immediately after pickup note
+    expected_start_time_note2 = parser.cumulative_time  # Should be 1.0 seconds
     assert note2.start_time == expected_start_time_note2
-    duration_note2 = (4 / parser.divisions) * (60 / tempo)
+    duration_note2 = (16 / parser.divisions) * (60.0 / tempo)  # Should be 2.0 seconds
     assert note2.duration == duration_note2
 
 
@@ -421,10 +420,223 @@ def test_parse_note_element():
     </note>
     '''
     note_elem = ET.fromstring(note_xml)
-    note_obj, duration_seconds = parser.parse_note_element(note_elem)
+    note_obj, duration_seconds, voice_number = parser.parse_note_element(note_elem)
     assert note_obj is not None
     assert note_obj.pitch.midi_note == 70  # B♭4
     assert note_obj.duration == (1 / parser.divisions) * (60.0 / parser.tempo)
     assert note_obj.voice == 1
     assert duration_seconds == note_obj.duration
+
+
+def test_rests_are_handled_correctly():
+    xml_content = '''
+    <score-partwise>
+      <part id="P1">
+        <measure number="1">
+          <attributes>
+            <divisions>1</divisions>
+            <time>
+              <beats>4</beats>
+              <beat-type>4</beat-type>
+            </time>
+          </attributes>
+          <note>
+            <rest/>
+            <duration>2</duration>
+            <voice>1</voice>
+            <type>half</type>
+          </note>
+          <note>
+            <pitch>
+              <step>C</step>
+              <octave>4</octave>
+            </pitch>
+            <duration>2</duration>
+            <voice>1</voice>
+            <type>half</type>
+          </note>
+        </measure>
+      </part>
+    </score-partwise>
+    '''
+    # Parse the XML content
+    parser = MusicXMLParser()
+    root = ET.fromstring(xml_content)
+
+    # Simulate parsing as in parser.parse()
+    parser.ns_tag = lambda tag: tag  # No namespace
+    parser.part_info = {'P1': {'name': 'Piano'}}
+    part_elem = root.find('part')
+    parser.parse_part(part_elem, part_index=0)
+
+    notes = parser.notes
+    assert len(notes) == 1  # Only one note object (the rest does not create a Note)
+    note = notes[0]
+
+    # Verify that the note's start_time accounts for the rest duration
+    # Rest duration: (2 / divisions) * (60 / tempo) = (2 / 1) * 0.5 = 1.0 seconds
+    expected_start_time = 1.0
+    assert note.start_time == expected_start_time
+    # Note duration: (2 / divisions) * (60 / tempo) = (2 / 1) * 0.5 = 1.0 seconds
+    expected_duration = 1.0
+    assert note.duration == expected_duration
+    assert note.pitch.midi_note == 60  # C4
+
+
+def test_chord_notes_start_simultaneously():
+    xml_content = '''
+    <score-partwise>
+      <part id="P1">
+        <measure number="1">
+          <attributes>
+            <divisions>1</divisions>
+          </attributes>
+          <note>
+            <pitch>
+              <step>C</step>
+              <octave>4</octave>
+            </pitch>
+            <duration>4</duration>
+            <voice>1</voice>
+            <type>whole</type>
+          </note>
+          <note>
+            <chord/>
+            <pitch>
+              <step>E</step>
+              <octave>4</octave>
+            </pitch>
+            <duration>4</duration>
+            <voice>1</voice>
+            <type>whole</type>
+          </note>
+          <note>
+            <chord/>
+            <pitch>
+              <step>G</step>
+              <octave>4</octave>
+            </pitch>
+            <duration>4</duration>
+            <voice>1</voice>
+            <type>whole</type>
+          </note>
+        </measure>
+      </part>
+    </score-partwise>
+    '''
+    # Parse the XML content
+    parser = MusicXMLParser()
+    root = ET.fromstring(xml_content)
+
+    # Simulate parsing as in parser.parse()
+    parser.ns_tag = lambda tag: tag  # No namespace
+    parser.part_info = {'P1': {'name': 'Piano'}}
+    part_elem = root.find('part')
+    parser.parse_part(part_elem, part_index=0)
+
+    notes = parser.notes
+    assert len(notes) == 3
+    note_c, note_e, note_g = notes
+
+    # All chord notes should have the same start_time
+    assert note_c.start_time == note_e.start_time == note_g.start_time == 0.0
+
+    # All chord notes should have the same duration
+    assert note_c.duration == note_e.duration == note_g.duration == (4 / parser.divisions) * (60 / parser.tempo)
+
+    # Verify pitches
+    assert note_c.pitch.midi_note == 60  # C4
+    assert note_e.pitch.midi_note == 64  # E4
+    assert note_g.pitch.midi_note == 67  # G4
+
+
+def test_collect_chord_notes():
+    parser = MusicXMLParser()
+    parser.ns_tag = lambda tag: tag  # No namespace
+    measure_elements = [
+        ET.fromstring('<note><pitch><step>C</step><octave>4</octave></pitch></note>'),
+        ET.fromstring('<note><chord/><pitch><step>E</step><octave>4</octave></pitch></note>'),
+        ET.fromstring('<note><pitch><step>G</step><octave>4</octave></pitch></note>')
+    ]
+    chord_notes, next_index = parser.collect_chord_notes(measure_elements, 0)
+    assert len(chord_notes) == 2
+    assert parser.get_local_tag(chord_notes[0].tag) == 'note'
+    assert parser.get_local_tag(chord_notes[1].tag) == 'note'
+    assert next_index == 2  # Next index to process
+
+
+def test_process_notes():
+    parser = MusicXMLParser()
+    parser.ns_tag = lambda tag: tag  # No namespace
+    parser.divisions = 4
+    parser.tempo = 120.0
+    parser.cumulative_time = 0.0
+    note_elems = [
+        ET.fromstring('''
+        <note>
+            <duration>16</duration>
+            <voice>1</voice>
+            <pitch>
+                <step>C</step>
+                <octave>4</octave>
+            </pitch>
+        </note>
+        '''),
+        ET.fromstring('''
+        <note>
+            <chord/>
+            <duration>16</duration>
+            <voice>1</voice>
+            <pitch>
+                <step>E</step>
+                <octave>4</octave>
+            </pitch>
+        </note>
+        ''')
+    ]
+    notes = parser.process_notes(note_elems)
+    assert len(notes) == 2
+    assert notes[0].pitch.midi_note == 60  # C4
+    assert notes[1].pitch.midi_note == 64  # E4
+    assert notes[0].start_time == notes[1].start_time == 0.0
+    assert notes[0].duration == notes[1].duration == (16 / parser.divisions) * (60.0 / parser.tempo)
+
+
+def test_handle_backup_forward():
+    parser = MusicXMLParser()
+    parser.ns_tag = lambda tag: tag  # No namespace
+    parser.divisions = 1
+    parser.tempo = 60.0
+    parser.voice_current_times = {1: 2.0, 2: 2.0}
+    backup_elem = ET.fromstring('<backup><duration>1</duration></backup>')
+    parser.handle_backup_forward(backup_elem, 'backup')
+    assert parser.voice_current_times[1] == 1.0
+    assert parser.voice_current_times[2] == 1.0
+
+    forward_elem = ET.fromstring('<forward><duration>2</duration></forward>')
+    parser.handle_backup_forward(forward_elem, 'forward')
+    assert parser.voice_current_times[1] == 3.0
+    assert parser.voice_current_times[2] == 3.0
+
+
+def test_calculate_measure_duration():
+    parser = MusicXMLParser()
+    parser.ns_tag = lambda tag: tag  # No namespace
+    parser.divisions = 4
+    parser.tempo = 120.0
+    parser.time_signature = (4, 4)  # 4/4 time
+    parser.cumulative_time = 0.0
+    parser.voice_current_times = {1: 2.0, 2: 2.0}
+
+    # Explicit measure
+    measure_duration = parser.calculate_measure_duration(0.0, implicit=False)
+    assert measure_duration == 2.0  # Expected measure duration in seconds
+    assert parser.voice_current_times[1] == 2.0
+    assert parser.voice_current_times[2] == 2.0
+
+    # Implicit measure
+    parser.voice_current_times = {1: 1.0, 2: 1.5}
+    measure_duration = parser.calculate_measure_duration(0.0, implicit=True)
+    assert measure_duration == 1.5  # Maximum voice time minus start time
+
 

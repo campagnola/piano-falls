@@ -2,49 +2,51 @@
 class Song:
     """Encapsulates a sequence of events in a song (notes, bars, lyrics, etc.)
     """
-    def __init__(self, notes):
-        # *notes* is a list of dicts describing each note
-        # keys are: start_time, pitch, duration, track, track_n, on_msg, off_msg
-        self.notes = []
-        for i, src_note in enumerate(notes):
-            if isinstance(src_note, dict):
-                self.notes.append(Note(index=i, **src_note))
-            elif isinstance(src_note, Note):
-                src_note.index = i
-                self.notes.append(src_note)
+    def __init__(self, events):
+        self.events = []
+        for i, src_event in enumerate(events):
+            if isinstance(src_event, Event):
+                src_event.index = i
+                self.events.append(src_event)
             else:
-                raise ValueError(f'Invalid note type: {type(src_note)}')
+                raise ValueError(f'Invalid note type: {type(src_event)}')
 
-        self.notes.sort(key=lambda n: n.start_time)
+        self.events.sort(key=lambda n: n.time)
 
         # Lookup table for quickly finding the note at a given time
         self.time_lookup = {}
         last = -1
-        for i,note in enumerate(self.notes):
-            t = int(note.start_time)
+        for i,note in enumerate(self.events):
+            t = int(note.time)
             if t not in self.time_lookup:
                 for j in range(last+1, t+1):
                     self.time_lookup[j] = i
                 last = t
 
     def __len__(self):
-        return len(self.notes)
+        return len(self.events)
     
     def index_at_time(self, time):
-        """Return the index of the first note at or after the given time"""
+        """Return the index of the first event at or after the given time"""
         time = max(0, time)
         closest_index = self.time_lookup.get(int(time), None)
         if closest_index is None:
             return None
         while True:
-            if self.notes[closest_index].start_time >= time:
+            if self.events[closest_index].time >= time:
                 return closest_index
             closest_index += 1
 
 
-class Note:
+class Event:
+    def __init__(self, time, type):
+        self.time = time
+        self.type = type
+
+
+class Note(Event):
     def __init__(self, start_time, pitch, duration, index=None, track=None, track_n=None, staff=1, voice=1, on_msg=None, off_msg=None):
-        self.start_time = start_time
+        Event.__init__(self, start_time, 'note')
         self.pitch = pitch
         self.duration = duration
         self.index = index

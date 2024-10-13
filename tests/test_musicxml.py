@@ -5,7 +5,8 @@ import pytest
 import tempfile
 import os
 import zipfile
-from pianofalls.musicxml import load_musicxml
+import xml.etree.ElementTree as ET
+from pianofalls.musicxml import load_musicxml, MusicXMLParser
 
 
 def test_load_musicxml():
@@ -44,7 +45,7 @@ def test_load_musicxml():
         with zipfile.ZipFile(temp_file, 'w') as zf:
             # The mxl file should contain the musicxml content in a file called 'score.xml'
             zf.writestr('META-INF/container.xml', '''<?xml version="1.0" encoding="UTF-8"?>
-<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+<container version="1.0" xmlns="container">
    <rootfiles>
       <rootfile full-path="score.xml" media-type="application/vnd.recordare.musicxml+xml"/>
    </rootfiles>
@@ -63,3 +64,293 @@ def test_load_musicxml():
         assert note.duration == expected_duration  # Should be 1.0
     finally:
         os.remove(temp_filename)
+
+
+def test_parser_overlapping_notes_due_to_new_voice():
+    xml_content = '''
+    <score-partwise>
+      <part id="P1">
+        <measure number="1">
+          <attributes>
+            <divisions>1</divisions>
+            <time>
+              <beats>4</beats>
+              <beat-type>4</beat-type>
+            </time>
+          </attributes>
+          <note>
+            <pitch>
+              <step>D</step>
+              <octave>3</octave>
+            </pitch>
+            <duration>2</duration>
+            <voice>1</voice>
+            <type>half</type>
+            <staff>1</staff>
+          </note>
+        </measure>
+        <measure number="2">
+          <note>
+            <pitch>
+              <step>C</step>
+              <alter>1</alter>
+              <octave>2</octave>
+            </pitch>
+            <duration>1</duration>
+            <voice>6</voice>
+            <type>quarter</type>
+            <staff>2</staff>
+          </note>
+        </measure>
+      </part>
+    </score-partwise>
+    '''
+    # Parse the XML content
+    parser = MusicXMLParser()
+    root = ET.fromstring(xml_content)
+
+    # Simulate parsing as in parser.parse()
+    parser.ns_tag = lambda tag: tag  # No namespace
+    parser.part_info = {'P1': {'name': 'Piano'}}
+    part_elem = root.find('part')
+    parser.parse_part(part_elem, part_index=0)
+
+    notes = parser.notes
+    assert len(notes) == 2
+    note1, note2 = notes
+
+    # Note 1 (Measure 1)
+    assert note1.pitch.midi_note == 50  # D3
+    assert note1.start_time == 0.0
+    duration_note1 = (2 / parser.divisions) * (60 / parser.tempo)  # divisions=1, duration=2
+    assert note1.duration == duration_note1
+
+    # Measure Duration
+    beats, beat_type = parser.time_signature
+    beat_duration = (60.0 / parser.tempo) * (4 / beat_type)
+    measure_duration = beats * beat_duration  # 2.0 seconds
+
+    # Note 2 (Measure 2)
+    expected_start_time_note2 = note1.start_time + measure_duration  # Should be 2.0 seconds
+    duration_note2 = (1 / parser.divisions) * (60 / parser.tempo)  # duration=1
+    assert note2.start_time == expected_start_time_note2
+    assert note2.duration == duration_note2
+    assert note2.pitch.midi_note == 37  # C#2
+
+
+def test_measure_duration_from_time_signature():
+    xml_content = '''
+    <score-partwise>
+      <part id="P1">
+        <measure number="1">
+          <attributes>
+            <divisions>4</divisions>
+            <time>
+              <beats>4</beats>
+              <beat-type>4</beat-type>
+            </time>
+          </attributes>
+          <note>
+            <pitch>
+              <step>C</step>
+              <octave>4</octave>
+            </pitch>
+            <duration>4</duration>
+            <type>whole</type>
+          </note>
+          <!-- Missing notes/rests to fill the measure -->
+        </measure>
+        <measure number="2">
+          <note>
+            <pitch>
+              <step>D</step>
+              <octave>4</octave>
+            </pitch>
+            <duration>4</duration>
+            <type>whole</type>
+          </note>
+        </measure>
+      </part>
+    </score-partwise>
+    '''
+    # Parse the XML content
+    parser = MusicXMLParser()
+    root = ET.fromstring(xml_content)
+
+    # Simulate parsing as in parser.parse()
+    parser.ns_tag = lambda tag: tag  # No namespace
+    parser.part_info = {'P1': {'name': 'Piano'}}
+    part_elem = root.find('part')
+    parser.parse_part(part_elem, part_index=0)
+
+    notes = parser.notes
+    assert len(notes) == 2
+    note1, note2 = notes
+
+    # Tempo is default 120 BPM
+    tempo = 120.0
+    # Time signature is 4/4
+    beats = 4
+    beat_type = 4
+    beat_duration = (60.0 / tempo) * (4 / beat_type)
+    expected_measure_duration = beats * beat_duration  # 2.0 seconds
+
+    # Note 1 (Measure 1)
+    assert note1.pitch.midi_note == 60  # C4
+    assert note1.start_time == 0.0
+    duration_note1 = (4 / parser.divisions) * (60 / tempo)  # divisions=4, duration=4
+    assert note1.duration == duration_note1
+
+    # The measure duration should be 2.0 seconds
+    # Even though the note duration is shorter, the measure should be 2.0 seconds
+    assert parser.cumulative_time == expected_measure_duration * 2  # Two measures
+
+    # Note 2 (Measure 2)
+    expected_start_time_note2 = expected_measure_duration  # Starts at 2.0 seconds
+    assert note2.start_time == expected_start_time_note2
+    duration_note2 = duration_note1
+    assert note2.duration == duration_note2
+
+
+def test_pickup_measure():
+    xml_content = '''
+    <score-partwise>
+      <part id="P1">
+        <measure number="1" implicit="yes">
+          <attributes>
+            <divisions>4</divisions>
+            <time>
+              <beats>4</beats>
+              <beat-type>4</beat-type>
+            </time>
+          </attributes>
+          <note>
+            <pitch>
+              <step>G</step>
+              <octave>4</octave>
+            </pitch>
+            <duration>2</duration>
+            <type>half</type>
+          </note>
+        </measure>
+        <measure number="2">
+          <note>
+            <pitch>
+              <step>C</step>
+              <octave>4</octave>
+            </pitch>
+            <duration>4</duration>
+            <type>whole</type>
+          </note>
+        </measure>
+      </part>
+    </score-partwise>
+    '''
+    # Parse the XML content
+    parser = MusicXMLParser()
+    root = ET.fromstring(xml_content)
+
+    # Simulate parsing as in parser.parse()
+    parser.ns_tag = lambda tag: tag  # No namespace
+    parser.part_info = {'P1': {'name': 'Piano'}}
+    part_elem = root.find('part')
+    parser.parse_part(part_elem, part_index=0)
+
+    notes = parser.notes
+    assert len(notes) == 2
+    note1, note2 = notes
+
+    # Tempo is default 120 BPM
+    tempo = 120.0
+    # Time signature is 4/4
+    beats = 4
+    beat_type = 4
+    beat_duration = (60.0 / tempo) * (4 / beat_type)
+    expected_measure_duration = beats * beat_duration  # 2.0 seconds
+
+    # Note 1 (Pickup Measure)
+    assert note1.pitch.midi_note == 67  # G4
+    assert note1.start_time == 0.0
+    duration_note1 = (2 / parser.divisions) * (60 / tempo)  # divisions=4, duration=2
+    assert note1.duration == duration_note1
+
+    # Since the pickup measure is implicit, cumulative_time should be equal to the duration of note1
+    assert parser.cumulative_time == duration_note1 + expected_measure_duration  # Total time after both measures
+
+    # Note 2 (Measure 2)
+    expected_start_time_note2 = duration_note1  # Starts immediately after pickup note
+    assert note2.start_time == expected_start_time_note2
+    duration_note2 = (4 / parser.divisions) * (60 / tempo)
+    assert note2.duration == duration_note2
+
+
+def test_note_pitch_with_flat_key_signature():
+    xml_content = '''
+    <score-partwise>
+      <part id="P1">
+        <measure number="1">
+          <attributes>
+            <divisions>1</divisions>
+            <key>
+              <fifths>-2</fifths> <!-- Key of B♭ major (2 flats) -->
+            </key>
+            <time>
+              <beats>4</beats>
+              <beat-type>4</beat-type>
+            </time>
+          </attributes>
+          <note>
+            <pitch>
+              <step>B</step>
+              <octave>4</octave>
+            </pitch>
+            <duration>4</duration>
+            <type>whole</type>
+            <staff>1</staff>
+          </note>
+          <note>
+            <pitch>
+              <step>E</step>
+              <octave>5</octave>
+            </pitch>
+            <duration>4</duration>
+            <type>whole</type>
+            <staff>1</staff>
+          </note>
+          <note>
+            <pitch>
+              <step>A</step>
+              <alter>1</alter>
+              <octave>4</octave>
+            </pitch>
+            <duration>4</duration>
+            <type>whole</type>
+            <staff>1</staff>
+          </note>
+        </measure>
+      </part>
+    </score-partwise>
+    '''
+    # Parse the XML content
+    parser = MusicXMLParser()
+    root = ET.fromstring(xml_content)
+
+    # Simulate parsing as in parser.parse()
+    parser.ns_tag = lambda tag: tag  # No namespace
+    parser.part_info = {'P1': {'name': 'Piano'}}
+    part_elem = root.find('part')
+    parser.parse_part(part_elem, part_index=0)
+
+    notes = parser.notes
+    assert len(notes) == 3
+    note_b_flat, note_e_flat, note_a_sharp = notes
+
+    # Note B in key of B♭ major (2 flats), should be B♭ (MIDI note 70)
+    assert note_b_flat.pitch.midi_note == 70  # B♭4
+
+    # Note E in key of B♭ major (2 flats), should be E♭ (MIDI note 75)
+    assert note_e_flat.pitch.midi_note == 75  # E♭5
+
+    # Note A♯ with explicit alter, should be A♯ (MIDI note 70)
+    # Alter from <alter> element takes precedence
+    assert note_a_sharp.pitch.midi_note == 70  # A♯4

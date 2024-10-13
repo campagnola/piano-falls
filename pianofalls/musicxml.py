@@ -126,18 +126,19 @@ class MusicXMLParser:
             # Parse the measure
             measure_notes, measure_duration = self.parse_measure(measure_elem)
 
-            # Adjust note start times by adding cumulative_time
-            for note in measure_notes:
-                note.start_time += self.cumulative_time
-                # Annotate notes with part information
-                part_id = part_elem.attrib['id']
-                note.track_n = part_index
-                note.track = self.part_info.get(part_id, {}).get('name', f'Part {part_index}')
-
             # Update cumulative time
             self.cumulative_time += measure_duration
 
+            # Annotate notes with part information
+            part_id = part_elem.attrib['id']
+            for note in measure_notes:
+                note.track_n = part_index
+                note.track = self.part_info.get(part_id, {}).get('name', f'Part {part_index}')
+
             self.notes.extend(measure_notes)
+
+        # Reset voice_current_times after each part
+        self.voice_current_times = {}
 
     def parse_measure(self, measure_elem):
         """
@@ -153,7 +154,7 @@ class MusicXMLParser:
         implicit = measure_elem.attrib.get('implicit', 'no') == 'yes'
 
         # Initialize measure start time
-        measure_start_time = self.cumulative_time
+        measure_start_time = 0.0  # Start at 0.0 for each measure
 
         # Process measure elements
         measure_elements = list(measure_elem)
@@ -175,7 +176,7 @@ class MusicXMLParser:
             elif tag == "note":
                 # Process note elements
                 note_elems, i = self.collect_chord_notes(measure_elements, i)
-                new_notes = self.process_notes(note_elems, measure_start_time)
+                new_notes = self.process_notes(note_elems)
                 notes.extend(new_notes)
 
             elif tag in ("backup", "forward"):
@@ -217,7 +218,7 @@ class MusicXMLParser:
                 break  # Not a note
         return chord_notes, index
 
-    def process_notes(self, note_elems, measure_start_time):
+    def process_notes(self, note_elems):
         """
         Processes a list of note elements (possibly forming a chord) and returns Note objects.
 
@@ -230,7 +231,7 @@ class MusicXMLParser:
 
         # Initialize current_time for this voice if not already set
         if voice_number not in self.voice_current_times:
-            self.voice_current_times[voice_number] = measure_start_time
+            self.voice_current_times[voice_number] = 0.0  # Start at 0.0 within the measure
         current_time = self.voice_current_times[voice_number]
 
         # Process all chord notes
@@ -239,6 +240,8 @@ class MusicXMLParser:
             note_obj, note_duration_seconds, note_voice_number = self.parse_note_element(
                 note_elem, current_time_override=current_time)
             if note_obj:
+                # Adjust note start time by cumulative_time
+                note_obj.start_time += self.cumulative_time + current_time
                 notes.append(note_obj)
             duration_seconds = note_duration_seconds  # All chord notes should have the same duration
 

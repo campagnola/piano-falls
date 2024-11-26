@@ -27,10 +27,14 @@ def extract_measures(mxl_root, n):
     return new_root
 
 
+def sort_notes(notes):
+    return sorted(notes, key=lambda n: (n.start_time, n.pitch.midi_note))
+
 
 def compare_songs(song1, song2, names):
-    notes1 = list(song1.notes)
-    notes2 = list(song2.notes)
+    notes1 = sort_notes(song1.notes)
+    notes2 = sort_notes(song2.notes)
+
     print(f'Comparing {names[0]} : {names[1]}')
     print(f'  lengths: {len(notes1)}: {len(notes2)}')
     def close(a, b):
@@ -83,6 +87,7 @@ if __name__ == '__main__':
     try:
         difference_found = False
         for i in range(1, n_measures):
+            print(f'Checking {i} measures...')
             short_xml = extract_measures(original_xml, i)
 
             # write xml to a temp file

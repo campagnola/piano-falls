@@ -82,10 +82,11 @@ class Barline(Event):
 
 class VoiceEvent(Event):
     def __init__(self, duration=None, start_time=None, track=None, 
-                 staff=1, voice=1, **kwds):
+                 staff=1, voice=1, is_chord=False, **kwds):
         self.track = track
         self.staff = staff
         self.voice = voice
+        self.is_chord = is_chord
         super().__init__(start_time=start_time, duration=duration, **kwds)
 
     def __repr__(self):
@@ -93,9 +94,8 @@ class VoiceEvent(Event):
 
 
 class Note(VoiceEvent):
-    def __init__(self, pitch, is_chord=False, **kwds):
+    def __init__(self, pitch, **kwds):
         self.pitch = pitch
-        self.is_chord = is_chord
         super().__init__(**kwds)
 
     def __repr__(self):

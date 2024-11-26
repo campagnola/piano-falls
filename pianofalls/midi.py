@@ -79,27 +79,29 @@ def load_midi(filename:str) -> Song:
         msg = message['midi']
         msg_time = message['time']
         if msg.type == 'note_on' and msg.velocity > 0:
+            note_key = (msg.note, msg.channel)
             note_dict = {
                 'start_time': msg_time, 'pitch': Pitch(midi_note=msg.note), 'duration': None, 
                 'track': message['track'], 'track_n': message['track_n'],
                 'on_msg': message, 'off_msg': None
             }
             notes.append(note_dict)
-            if msg.note in current_notes:
+            if note_key in current_notes:
                 # end previous note here
-                prev_note = current_notes[msg.note]
+                prev_note = current_notes[note_key]
                 prev_note['duration'] = msg_time - prev_note['start_time']
-            current_notes[msg.note] = note_dict
+            current_notes[note_key] = note_dict
         elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
-            if msg.note not in current_notes:
+            note_key = (msg.note, msg.channel)
+            if note_key not in current_notes:
                 continue
             note_end = msg_time
-            note_start = current_notes[msg.note]['start_time']
-            current_notes[msg.note]['duration'] = note_end - note_start
-            current_notes[msg.note]['off_msg'] = msg
-            del current_notes[msg.note]
+            note_start = current_notes[note_key]['start_time']
+            current_notes[note_key]['duration'] = note_end - note_start
+            current_notes[note_key]['off_msg'] = msg
+            del current_notes[note_key]
 
     # filter out empty notes
-    notes = [n for n in notes if n['duration'] > 0]
+    filtered_notes = [n for n in notes if n['duration'] > 0]
 
-    return Song(notes)
+    return Song(filtered_notes)

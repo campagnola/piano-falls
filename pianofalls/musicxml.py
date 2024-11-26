@@ -201,6 +201,7 @@ class MusicXMLParser:
                 offset = ev.start_time
             if offset is not None:
                 ev.start_time -= offset
+            assert ev.duration is not None
 
         return merged_notes
 
@@ -267,7 +268,7 @@ class MusicXMLParser:
                 item.start_quarters = current_quarters
                 items.append(item)
                 # advance clock unless this is a chord note
-                if item.duration_quarters > 0:
+                if item.duration_quarters > 0 and not item.is_chord:
                     current_quarters += item.duration_quarters
 
             elif tag in ("backup", "forward"):
@@ -438,9 +439,6 @@ class MusicXMLParser:
 
         # Get chord
         is_chord = note_elem.find(self.ns_tag('chord')) is not None
-        if is_chord:
-            # Chorded notes have no duration of their own
-            duration_quarters = 0
 
         if is_rest:
             return Rest(duration_quarters=duration_quarters, voice_number=voice_number, is_grace=is_grace)

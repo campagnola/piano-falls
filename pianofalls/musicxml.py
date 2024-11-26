@@ -105,8 +105,8 @@ class MusicXMLParser:
             measures = self.parse_part(part_elem)
             parsed_parts.append(measures)
 
-        # Collect all measures from all parts
-        all_measures = []
+        # Collate all measures from all parts
+        all_measures:List[List[Measure]] = []
         for part in parsed_parts:
             for i,measure in enumerate(part):
                 if i >= len(all_measures):
@@ -114,6 +114,13 @@ class MusicXMLParser:
                 all_measures[i].append(measure) 
 
         # assign real start times and durations to notes
+        all_notes = self.calculate_event_times(all_measures)
+
+        # Create a Song instance with the notes
+        song = Song(events=all_notes)
+        return song
+
+    def calculate_event_times(self, all_measures) -> List[Event]:
         all_notes = []
         current_time = 0
         current_tempo = 120
@@ -122,6 +129,8 @@ class MusicXMLParser:
                 self.note = note
                 self.start_quarters = note.start_quarters + note.duration_quarters
                 Event.__init__(self, start_time=None, duration=0, duration_quarters=0)
+            def __repr__(self):
+                return f"<NoteStopEvent {self.note}>"
 
         for measures in all_measures:
             last_time_quarters = 0
@@ -170,9 +179,17 @@ class MusicXMLParser:
                 else:
                     all_notes.append(ev)
 
-        # Create a Song instance with the notes
-        song = Song(events=all_notes)
-        return song
+                assert ev.start_time is not None, f"Event {ev} has no start time"
+
+        # offset all start times such that the first playable note starts at time 0
+        offset = None
+        for ev in all_notes:
+            if offset is None and isinstance(ev, Note):
+                offset = ev.start_time
+            if offset is not None:
+                ev.start_time -= offset
+
+        return all_notes
 
     def parse_part(self, part_elem):
         """Collect all notes and other events in this part, return a list of measures
@@ -331,6 +348,8 @@ class MusicXMLParser:
             Duration of the note in divisions
         stolen_time : float
             Time stolen from the next (positive values) or previous (negative values) note
+        is_grace : bool
+            True if the note is a grace note
         """
         # by default, time is not stolen
         stolen_time = 0.0
@@ -360,8 +379,10 @@ class MusicXMLParser:
                 stolen_time = float(grace_elem.attrib['steal-time-following'])
             elif 'steal-time-previous' in grace_elem.attrib:
                 stolen_time = -float(grace_elem.attrib['steal-time-previous'])
+            else:
+                stolen_time = 'default'  # no timing specified; decide later
 
-        return duration_divisions, stolen_time
+        return duration_divisions, stolen_time, grace_elem is not None
 
     def process_pitch(self, note_elem):
         pitch_elem = note_elem.find(self.ns_tag('pitch'))
@@ -419,12 +440,12 @@ class MusicXMLParser:
         voice_number, staff_number = self.get_voice_and_staff(note_elem)
 
         # Get duration
-        duration_divisions, stolen_time = self.get_note_duration(note_elem)
+        duration_divisions, stolen_time, is_grace = self.get_note_duration(note_elem)
         duration_quarters = duration_divisions / self.divisions_per_quarter
 
         if is_rest:
             # Return None since we don't need to create a Note object for a rest
-            return Rest(duration_quarters=duration_quarters, voice_number=voice_number)
+            return Rest(duration_quarters=duration_quarters, voice_number=voice_number, is_grace=is_grace)
         else:
             # Process pitch
             pitch = self.process_pitch(note_elem)
@@ -438,6 +459,7 @@ class MusicXMLParser:
                 voice=voice_number,
                 xml=note_elem,
                 stolen_time=stolen_time,
+                is_grace=is_grace,
             )
 
             return note_obj
@@ -489,15 +511,11 @@ class XmlLineReader:
     """
     def __init__(self, xml_str):
         self._iter = iter(xml_str.splitlines())
-        self._current_line = -1
+        self.line = -1
 
-    @property
-    def line(self): 
-        return self._current_line
-    
     def read(self, *_):
         try:
-            self._current_line += 1
+            self.line += 1
             return next(self._iter)
         except:
             return None
@@ -594,17 +612,29 @@ class Part:
                         prev_note = note
             # we now have a previous note + grace notes + next note
             # first steal time from other notes and give to grace notes
+            gn_start_quarters = 0  # when to start grace notes relative to end of previous note
             for gn in grace_notes:
-                stolen_note = next_note if gn.stolen_time > 0 else prev_note
-                assert stolen_note is not None, "Grace note has no note to steal time from"
-                stolen_duration_quarters = stolen_note.duration_quarters * gn.stolen_time / 100
+                if gn.stolen_time == 'default':
+                    # we can decide how to render the grace note; no timing was specified
+                    stolen_note = next_note
+                    stolen_duration_quarters = 0.25  # roughly 1/4 of a quarter note
+                else:
+                    stolen_note = next_note if gn.stolen_time > 0 else prev_note
+                    assert stolen_note is not None, "Grace note has no note to steal time from"
+                    if not hasattr(stolen_note, '_original_duration_quarters'):
+                        # if there are multiple grace notes, keep the stolen time proportional to the original duration
+                        stolen_note._original_duration_quarters = stolen_note.duration_quarters
+                    stolen_duration_quarters = stolen_note._original_duration_quarters * abs(gn.stolen_time) / 100
                 stolen_note.duration_quarters -= stolen_duration_quarters
                 gn.duration_quarters += stolen_duration_quarters
-                if gn.stolen_time > 0:
-                    gn.start_quarters += stolen_duration_quarters
+                if stolen_note is prev_note:
+                    gn_start_quarters -= stolen_duration_quarters
+                elif stolen_note is next_note:
+                    next_note.start_quarters += stolen_duration_quarters
+                assert gn.duration_quarters > 0, "Grace note has no duration"
 
             # next, determine the start time of the grace notes
-            start = prev_note.start_quarters + prev_note.duration_quarters
+            start = prev_note.start_quarters + prev_note.duration_quarters + gn_start_quarters
             for gn in grace_notes:
                 gn.start_quarters = start
                 start += gn.duration_quarters

@@ -3,19 +3,24 @@ class Song:
     """Encapsulates a sequence of events in a song (notes, bars, lyrics, etc.)
     """
     def __init__(self, events):
-        # *notes* is a list of dicts describing each note
+        # *events* can be a list of dicts describing each note
         # keys are: start_time, pitch, duration, track, track_n, on_msg, off_msg
         self.notes = []
+        self.events = []
         for i, src_event in enumerate(events):
             if isinstance(src_event, dict):
-                self.notes.append(Note(index=i, **src_event))
-            elif isinstance(src_event, Event):
-                src_event.index = i
-                self.notes.append(src_event)
-            else:
+                src_event = Note(**src_event)
+            
+            if not isinstance(src_event, Event):
                 raise ValueError(f'Invalid note type: {type(src_event)}')
+            
+            src_event.index = i
+            self.events.append(src_event)
+            if isinstance(src_event, Note) and src_event.pitch is not None:
+                self.notes.append(src_event)
 
         self.notes.sort(key=lambda n: n.start_time)
+        self.events.sort(key=lambda e: e.start_time)
 
         # Lookup table for quickly finding the note at a given time
         self.time_lookup = {}
@@ -46,13 +51,13 @@ class Song:
 
 class Event:
     def __init__(self, start_time, duration=0, **kwds):
-        self.time = start_time
+        self.start_time = start_time
         self.duration = duration
         for k,v in kwds.items():
             setattr(self, k, v)
 
     def __repr__(self):
-        return f'<{self.__class__.__name__} time={self.time}>'
+        return f'<{self.__class__.__name__} start_time={self.start_time}>'
 
 
 class TempoChange(Event):
@@ -85,18 +90,32 @@ class Note(Event):
         super().__init__(start_time=start_time, duration=duration, **kwds)
 
     def __repr__(self):
-        return f'<{self.__class__.__name__} staff={self.staff} voice={self.voice} start_time={self.start_time} pitch={self.pitch.midi_note} duration={self.duration}>'
+        return f'<{self.__class__.__name__} staff={self.staff} voice={self.voice} start_time={self.start_time} pitch={self.pitch.name} duration={self.duration}>'
 
 
 class Rest(Note):
     def __init__(self, duration=None, start_time=None, **kwds):
         super().__init__(start_time=start_time, pitch=None, duration=duration, **kwds)
 
+    def __repr__(self):
+        return f'<{self.__class__.__name__} start_time={self.start_time} duration={self.duration}>'
+
 
 class Pitch:
     def __init__(self, midi_note):
         self.midi_note = midi_note
-        self.key = midi_note - 21    
+        self.key = midi_note - 21
+
+        # midi note 24 is C1  (23 is B0, because of course)
+        self.note_name = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'][(midi_note - 24) % 12]
+        self.octave = 1 + (midi_note - 24) // 12
+
+    @property
+    def name(self):
+        return self.note_name + str(self.octave)
 
     def __eq__(self, other):
         return self.midi_note == other.midi_note
+
+    def __repr__(self):
+        return f'<{self.__class__.__name__} {self.name} ({self.midi_note})>'

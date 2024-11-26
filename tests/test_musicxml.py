@@ -122,7 +122,7 @@ def test_parser_overlapping_notes_due_to_new_voice():
     # Note 1 (Measure 1)
     assert note1.pitch.midi_note == 50  # D3
     assert note1.start_time == 0.0
-    duration_note1 = (2 / parser.divisions) * (60 / parser.tempo)  # divisions=1, duration=2
+    duration_note1 = (2 / parser.divisions_per_quarter) * (60 / parser.tempo)  # divisions=1, duration=2
     assert note1.duration == duration_note1
 
     # Measure Duration
@@ -132,7 +132,7 @@ def test_parser_overlapping_notes_due_to_new_voice():
 
     # Note 2 (Measure 2)
     expected_start_time_note2 = note1.start_time + measure_duration  # Should be 2.0 seconds
-    duration_note2 = (1 / parser.divisions) * (60 / parser.tempo)  # duration=1
+    duration_note2 = (1 / parser.divisions_per_quarter) * (60 / parser.tempo)  # duration=1
     assert note2.start_time == expected_start_time_note2
     assert note2.duration == duration_note2
     assert note2.pitch.midi_note == 37  # C#2
@@ -197,7 +197,7 @@ def test_measure_duration_from_time_signature():
     # Note 1 (Measure 1)
     assert note1.pitch.midi_note == 60  # C4
     assert note1.start_time == 0.0
-    duration_note1 = (16 / parser.divisions) * (60.0 / tempo)  # divisions=4, duration=16
+    duration_note1 = (16 / parser.divisions_per_quarter) * (60.0 / tempo)  # divisions=4, duration=16
     assert note1.duration == duration_note1  # Should be 2.0 seconds
 
     # Note 2 (Measure 2)
@@ -270,13 +270,13 @@ def test_pickup_measure():
     # Note 1 (Pickup Measure)
     assert note1.pitch.midi_note == 67  # G4
     assert note1.start_time == 0.0
-    duration_note1 = (8 / parser.divisions) * (60.0 / tempo)  # divisions=4, duration=8
+    duration_note1 = (8 / parser.divisions_per_quarter) * (60.0 / tempo)  # divisions=4, duration=8
     assert note1.duration == duration_note1  # Should be 1.0 seconds
 
     # Note 2 (Measure 2)
     expected_start_time_note2 = duration_note1  # Should be 1.0 seconds
     assert note2.start_time == expected_start_time_note2
-    duration_note2 = (16 / parser.divisions) * (60.0 / tempo)  # Should be 2.0 seconds
+    duration_note2 = (16 / parser.divisions_per_quarter) * (60.0 / tempo)  # Should be 2.0 seconds
     assert note2.duration == duration_note2
 
     # Cumulative time after both measures
@@ -374,7 +374,7 @@ def test_get_voice_and_staff():
 def test_get_duration():
     parser = MusicXMLParser()
     parser.ns_tag = lambda tag: tag  # No namespace
-    parser.divisions = 4  # Example divisions
+    parser.divisions_per_quarter = 4  # Example divisions
     parser.tempo = 120.0  # Example tempo
     note_xml = '''
     <note>
@@ -407,7 +407,7 @@ def test_process_pitch():
 def test_parse_note_element():
     parser = MusicXMLParser()
     parser.ns_tag = lambda tag: tag  # No namespace
-    parser.divisions = 1
+    parser.divisions_per_quarter = 1
     parser.tempo = 120.0
     parser.key_signature = -2  # Key of B♭ major
     note_xml = '''
@@ -424,7 +424,7 @@ def test_parse_note_element():
     note_obj, duration_seconds, voice_number = parser.parse_note_element(note_elem)
     assert note_obj is not None
     assert note_obj.pitch.midi_note == 70  # B♭4
-    assert note_obj.duration == (1 / parser.divisions) * (60.0 / parser.tempo)
+    assert note_obj.duration == (1 / parser.divisions_per_quarter) * (60.0 / parser.tempo)
     assert note_obj.voice == 1
     assert duration_seconds == note_obj.duration
 
@@ -543,7 +543,7 @@ def test_chord_notes_start_simultaneously():
     assert note_c.start_time == note_e.start_time == note_g.start_time == 0.0
 
     # All chord notes should have the same duration
-    assert note_c.duration == note_e.duration == note_g.duration == (4 / parser.divisions) * (60 / parser.tempo)
+    assert note_c.duration == note_e.duration == note_g.duration == (4 / parser.divisions_per_quarter) * (60 / parser.tempo)
 
     # Verify pitches
     assert note_c.pitch.midi_note == 60  # C4
@@ -569,7 +569,7 @@ def test_collect_chord_notes():
 def test_process_notes():
     parser = MusicXMLParser()
     parser.ns_tag = lambda tag: tag  # No namespace
-    parser.divisions = 4
+    parser.divisions_per_quarter = 4
     parser.tempo = 120.0
     parser.cumulative_time = 0.0
     note_elems = [
@@ -600,13 +600,13 @@ def test_process_notes():
     assert notes[0].pitch.midi_note == 60  # C4
     assert notes[1].pitch.midi_note == 64  # E4
     assert notes[0].start_time == notes[1].start_time == 0.0
-    assert notes[0].duration == notes[1].duration == (16 / parser.divisions) * (60.0 / parser.tempo)
+    assert notes[0].duration == notes[1].duration == (16 / parser.divisions_per_quarter) * (60.0 / parser.tempo)
 
 
 def test_handle_backup_forward():
     parser = MusicXMLParser()
     parser.ns_tag = lambda tag: tag  # No namespace
-    parser.divisions = 1
+    parser.divisions_per_quarter = 1
     parser.tempo = 60.0
     parser.voice_current_times = {1: 2.0, 2: 2.0}
     backup_elem = ET.fromstring('<backup><duration>1</duration></backup>')
@@ -623,7 +623,7 @@ def test_handle_backup_forward():
 def test_calculate_measure_duration():
     parser = MusicXMLParser()
     parser.ns_tag = lambda tag: tag  # No namespace
-    parser.divisions = 4
+    parser.divisions_per_quarter = 4
     parser.tempo = 120.0
     parser.time_signature = (4, 4)  # 4/4 time
     parser.cumulative_time = 0.0

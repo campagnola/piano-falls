@@ -189,10 +189,10 @@ class MusicXMLParser:
             else:
                 merged_notes.append(ev)
             # Handle tie start/stop
-            if ev.tie_type == 'start':
-                tied_notes[tie_key] = ev
-            elif ev.tie_type == 'stop':
+            if 'stop' in ev.tie_types:
                 del tied_notes[tie_key]
+            if 'start' in ev.tie_types:  # note can be both a stop and start!
+                tied_notes[tie_key] = ev
 
         # offset all start times such that the first playable note starts at time 0
         offset = None
@@ -440,8 +440,8 @@ class MusicXMLParser:
         duration_quarters = duration_divisions / self.divisions_per_quarter
 
         # Get tie
-        tie_elem = note_elem.find(self.ns_tag('tie'))
-        tie_type = None if tie_elem is None else tie_elem.attrib['type']
+        tie_elems = note_elem.findall(self.ns_tag('tie'))
+        tie_types = [tie_elem.attrib['type'] for tie_elem in tie_elems]
 
         # Get chord
         is_chord = note_elem.find(self.ns_tag('chord')) is not None
@@ -467,7 +467,7 @@ class MusicXMLParser:
                 stolen_time=stolen_time,
                 is_grace=is_grace,
                 grace_slash=grace_slash,
-                tie_type=tie_type,
+                tie_types=tie_types,
                 is_chord=is_chord,
                 note_type=note_type,
             )

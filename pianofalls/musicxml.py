@@ -344,8 +344,8 @@ class MusicXMLParser:
             Duration of the note in divisions
         stolen_time : float
             Time stolen from the next (positive values) or previous (negative values) note
-        is_grace : bool
-            True if the note is a grace note
+        grace_elem : Element | None
+            The grace element if the note is a grace note, otherwise None
         """
         # by default, time is not stolen
         stolen_time = 0.0
@@ -378,7 +378,7 @@ class MusicXMLParser:
             else:
                 stolen_time = 'default'  # no timing specified; decide later
 
-        return duration_divisions, stolen_time, grace_elem is not None
+        return duration_divisions, stolen_time, grace_elem
 
     def process_pitch(self, note_elem):
         pitch_elem = note_elem.find(self.ns_tag('pitch'))
@@ -436,7 +436,7 @@ class MusicXMLParser:
         voice_number, staff_number = self.get_voice_and_staff(note_elem)
 
         # Get duration
-        duration_divisions, stolen_time, is_grace = self.get_note_duration(note_elem)
+        duration_divisions, stolen_time, grace_elem = self.get_note_duration(note_elem)
         duration_quarters = duration_divisions / self.divisions_per_quarter
 
         # Get tie
@@ -445,6 +445,13 @@ class MusicXMLParser:
 
         # Get chord
         is_chord = note_elem.find(self.ns_tag('chord')) is not None
+
+        # get type
+        type_elem = note_elem.find(self.ns_tag('type'))
+        note_type = None if type_elem is None else type_elem.text
+
+        is_grace = grace_elem is not None
+        grace_slash = None if grace_elem is None else grace_elem.attrib.get('slash', None)
 
         if is_rest:
             return Rest(duration_quarters=duration_quarters, voice_number=voice_number, is_grace=is_grace)
@@ -459,8 +466,10 @@ class MusicXMLParser:
                 xml=note_elem,
                 stolen_time=stolen_time,
                 is_grace=is_grace,
+                grace_slash=grace_slash,
                 tie_type=tie_type,
                 is_chord=is_chord,
+                note_type=note_type,
             )
 
 
@@ -619,7 +628,9 @@ class Part:
                 if gn.stolen_time == 'default':
                     # we can decide how to render the grace note; no timing was specified
                     stolen_note = next_note
-                    stolen_duration_quarters = 0.25  # roughly 1/4 of a quarter note
+                    stolen_duration_quarters = 0.25
+                    if gn.grace_slash:
+                        stolen_duration_quarters *= 0.5 * 0.85
                 else:
                     stolen_note = next_note if gn.stolen_time > 0 else prev_note
                     assert stolen_note is not None, "Grace note has no note to steal time from"

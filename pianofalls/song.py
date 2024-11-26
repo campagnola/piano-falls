@@ -19,7 +19,7 @@ class Song:
             if isinstance(src_event, Note) and src_event.pitch is not None:
                 self.notes.append(src_event)
 
-        self.notes.sort(key=lambda n: n.start_time)
+        self.notes.sort(key=lambda n: (n.start_time, n.pitch.midi_note))
         self.events.sort(key=lambda e: e.start_time)
 
         # Lookup table for quickly finding the note at a given time
@@ -50,27 +50,35 @@ class Song:
 
 
 class Event:
-    def __init__(self, start_time, duration=0, **kwds):
+    repr_keys = ['start_time', 'duration', 'part', 'staff']
+    def __init__(self, start_time, duration=0, part=None, staff=None, **kwds):
         self.start_time = start_time
         self.duration = duration
+        self.part = part
+        self.staff = staff
         for k,v in kwds.items():
             setattr(self, k, v)
 
     def __repr__(self):
-        return f'<{self.__class__.__name__} start_time={self.start_time}>'
+        vals = {k:getattr(self, k) for k in self.repr_keys}
+        val_str = " ".join(f"{k}={v}" for k,v in vals.items())
+        return f'<{self.__class__.__name__} {val_str}>'
 
 
 class TempoChange(Event):
+    repr_keys = Event.repr_keys + ['tempo']
     def __init__(self, tempo, start_time=None, **kwds):
         self.tempo = tempo
         super().__init__(start_time=start_time, **kwds)
 
 class KeySignatureChange(Event):
+    repr_keys = Event.repr_keys + ['fifths']
     def __init__(self, fifths, start_time=None, **kwds):
         self.fifths = fifths
         super().__init__(start_time=start_time, **kwds)
 
 class TimeSignatureChange(Event):
+    repr_keys = Event.repr_keys + ['numerator', 'denominator']
     def __init__(self, numerator, denominator, start_time=None, **kwds):
         self.numerator = numerator
         self.denominator = denominator
@@ -81,30 +89,24 @@ class Barline(Event):
 
 
 class VoiceEvent(Event):
+    repr_keys = Event.repr_keys + ['voice', 'is_chord']
     def __init__(self, duration=None, start_time=None, track=None, 
                  staff=1, voice=1, is_chord=False, **kwds):
         self.track = track
-        self.staff = staff
         self.voice = voice
         self.is_chord = is_chord
         super().__init__(start_time=start_time, duration=duration, **kwds)
 
-    def __repr__(self):
-        return f'<{self.__class__.__name__} staff={self.staff} voice={self.voice} start_time={self.start_time} duration={self.duration}>'
-
 
 class Note(VoiceEvent):
+    repr_keys = ['pitch'] + VoiceEvent.repr_keys
     def __init__(self, pitch, **kwds):
         self.pitch = pitch
         super().__init__(**kwds)
 
-    def __repr__(self):
-        return f'<{self.__class__.__name__} staff={self.staff} voice={self.voice} start_time={self.start_time} pitch={self.pitch.name} duration={self.duration}>'
-
 
 class Rest(VoiceEvent):
-    def __repr__(self):
-        return f'<{self.__class__.__name__} start_time={self.start_time} duration={self.duration}>'
+    pass
 
 
 class Pitch:

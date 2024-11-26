@@ -27,13 +27,9 @@ def extract_measures(mxl_root, n):
     return new_root
 
 
-def sort_notes(notes):
-    return sorted(notes, key=lambda n: (n.start_time, n.pitch.midi_note))
-
-
 def compare_songs(song1, song2, names):
-    notes1 = sort_notes(song1.notes)
-    notes2 = sort_notes(song2.notes)
+    notes1 = song1.notes.copy()
+    notes2 = song2.notes.copy()
 
     print(f'Comparing {names[0]} : {names[1]}')
     print(f'  lengths: {len(notes1)}: {len(notes2)}')

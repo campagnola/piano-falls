@@ -249,6 +249,8 @@ class MusicXMLParser:
         # Track time for this measure in quarters since divisions and tempo may change at any time
         current_quarters = 0
 
+        last_non_chord_note = None
+
         # Process measure elements
         for elem in measure_elem:
             tag = self.get_local_tag(elem.tag)
@@ -268,8 +270,12 @@ class MusicXMLParser:
                 item.start_quarters = current_quarters
                 items.append(item)
                 # advance clock unless this is a chord note
-                if item.duration_quarters > 0 and not item.is_chord:
+                if not item.is_chord:
+                    last_non_chord_note = item
                     current_quarters += item.duration_quarters
+                else:
+                    # if this is a chord note, set the start time to the last non-chord note
+                    item.start_quarters = last_non_chord_note.start_quarters
 
             elif tag in ("backup", "forward"):
                 duration_elem = elem.find(self.ns_tag('duration'))
@@ -567,6 +573,9 @@ class Part:
             for event in measure:
                 event.track_n = self.info['id']
                 event.track = self.info['name']
+
+    def __repr__(self):
+        return f"<Part {self.info['id']}: {self.info.get('name', 'unnamed')}>"
 
     def __iter__(self):
         return iter(self.measures)

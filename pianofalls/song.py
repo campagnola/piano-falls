@@ -80,26 +80,29 @@ class Barline(Event):
     pass
 
 
-class Note(Event):
-    def __init__(self, pitch, duration=None, start_time=None, index=None, track=None, 
-                 track_n=None, staff=1, voice=1, is_chord=False, **kwds):
-        self.pitch = pitch
-        self.index = index
+class VoiceEvent(Event):
+    def __init__(self, duration=None, start_time=None, track=None, 
+                 staff=1, voice=1, **kwds):
         self.track = track
-        self.track_n = track_n
         self.staff = staff
         self.voice = voice
-        self.is_chord = is_chord
         super().__init__(start_time=start_time, duration=duration, **kwds)
+
+    def __repr__(self):
+        return f'<{self.__class__.__name__} staff={self.staff} voice={self.voice} start_time={self.start_time} duration={self.duration}>'
+
+
+class Note(VoiceEvent):
+    def __init__(self, pitch, is_chord=False, **kwds):
+        self.pitch = pitch
+        self.is_chord = is_chord
+        super().__init__(**kwds)
 
     def __repr__(self):
         return f'<{self.__class__.__name__} staff={self.staff} voice={self.voice} start_time={self.start_time} pitch={self.pitch.name} duration={self.duration}>'
 
 
-class Rest(Note):
-    def __init__(self, duration=None, start_time=None, **kwds):
-        super().__init__(start_time=start_time, pitch=None, duration=duration, **kwds)
-
+class Rest(VoiceEvent):
     def __repr__(self):
         return f'<{self.__class__.__name__} start_time={self.start_time} duration={self.duration}>'
 

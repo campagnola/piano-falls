@@ -126,7 +126,7 @@ class MusicXMLParser:
         current_time = 0
         current_tempo = 120
         class NoteStopEvent(Event):
-            def __init__(self, note: Note):
+            def __init__(self, note):
                 self.note = note
                 self.start_quarters = note.start_quarters + note.duration_quarters
                 Event.__init__(self, start_time=None, duration=0, duration_quarters=0)
@@ -161,10 +161,6 @@ class MusicXMLParser:
                 # if this is a tempo change, update the current tempo
                 if isinstance(ev, TempoChange):
                     current_tempo = ev.tempo
-
-                # if this event has duration, then add it to the active events
-                if ev.duration_quarters > 0:
-                    ev.duration = 0
 
                 # if this is a stop event, remove the corresponding note from active events
                 # and set its duration
@@ -271,7 +267,7 @@ class MusicXMLParser:
                 item.start_quarters = current_quarters
                 items.append(item)
                 # advance clock unless this is a chord note
-                if not item.is_chord:
+                if item.duration_quarters > 0:
                     current_quarters += item.duration_quarters
 
             elif tag in ("backup", "forward"):
@@ -440,15 +436,17 @@ class MusicXMLParser:
         tie_elem = note_elem.find(self.ns_tag('tie'))
         tie_type = None if tie_elem is None else tie_elem.attrib['type']
 
+        # Get chord
+        is_chord = note_elem.find(self.ns_tag('chord')) is not None
+        if is_chord:
+            # Chorded notes have no duration of their own
+            duration_quarters = 0
+
         if is_rest:
-            # Return None since we don't need to create a Note object for a rest
             return Rest(duration_quarters=duration_quarters, voice_number=voice_number, is_grace=is_grace)
         else:
-            # Process pitch
             pitch = self.process_pitch(note_elem)
-
-            # Create the note object
-            note_obj = Note(
+            return Note(
                 start_time=None,  # will set this later
                 pitch=pitch,
                 duration_quarters=duration_quarters,
@@ -458,9 +456,8 @@ class MusicXMLParser:
                 stolen_time=stolen_time,
                 is_grace=is_grace,
                 tie_type=tie_type,
+                is_chord=is_chord,
             )
-
-            return note_obj
 
 
 def write_mxl(musicxml_root, mxl_file):

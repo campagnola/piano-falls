@@ -76,6 +76,9 @@ class TimeSignatureChange(Event):
         self.denominator = denominator
         super().__init__(start_time=start_time, **kwds)
 
+class Barline(Event):
+    pass
+
 
 class Note(Event):
     def __init__(self, pitch, duration=None, start_time=None, index=None, track=None, 

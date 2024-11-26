@@ -1,7 +1,8 @@
 from typing import List
 import zipfile, os, shutil
 import xml.etree.ElementTree as ET
-from .song import Song, Pitch, Note, Rest, Event, TempoChange, KeySignatureChange, TimeSignatureChange
+from .song import (Song, Pitch, Note, Rest, Event, Barline,
+                   TempoChange, KeySignatureChange, TimeSignatureChange)
 
 
 def load_musicxml(filename):
@@ -146,9 +147,6 @@ class MusicXMLParser:
             # sort all events in the measure by start time
             events.sort(key=lambda ev: ev.start_quarters)
 
-            # keep track of notes being played
-            active_events = set()
-
             # assign real start times and durations to notes
             for ev in events:
                 # calculate change in time since last event
@@ -159,10 +157,6 @@ class MusicXMLParser:
 
                 # set start time of this event
                 ev.start_time = current_time
-
-                # update duration of all active events
-                for active_ev in active_events:
-                    active_ev.duration += dt
                 
                 # if this is a tempo change, update the current tempo
                 if isinstance(ev, TempoChange):
@@ -171,25 +165,48 @@ class MusicXMLParser:
                 # if this event has duration, then add it to the active events
                 if ev.duration_quarters > 0:
                     ev.duration = 0
-                    active_events.add(ev)
 
                 # if this is a stop event, remove the corresponding note from active events
+                # and set its duration
                 if isinstance(ev, NoteStopEvent):
-                    active_events.remove(ev.note)
+                    ev.note.duration = current_time - ev.note.start_time
                 else:
                     all_notes.append(ev)
 
                 assert ev.start_time is not None, f"Event {ev} has no start time"
+            
+            all_notes.append(Barline(start_time=current_time))
+
+        # run through all events and merge tied notes
+        merged_notes = []
+        tied_notes = {}
+        for ev in all_notes:
+            if not isinstance(ev, Note):
+                merged_notes.append(ev)
+                continue
+            tie_key = (ev.part, ev.voice, ev.pitch.midi_note)
+            if tie_key in tied_notes:
+                # This note is tied to a previous note; extend the duration of the previous note
+                # and skip adding this note to the list
+                tied_note = tied_notes[tie_key]
+                tied_note.duration = ev.start_time + ev.duration - tied_note.start_time
+            else:
+                merged_notes.append(ev)
+            # Handle tie start/stop
+            if ev.tie_type == 'start':
+                tied_notes[tie_key] = ev
+            elif ev.tie_type == 'stop':
+                del tied_notes[tie_key]
 
         # offset all start times such that the first playable note starts at time 0
         offset = None
-        for ev in all_notes:
+        for ev in merged_notes:
             if offset is None and isinstance(ev, Note):
                 offset = ev.start_time
             if offset is not None:
                 ev.start_time -= offset
 
-        return all_notes
+        return merged_notes
 
     def parse_part(self, part_elem):
         """Collect all notes and other events in this part, return a list of measures
@@ -295,30 +312,6 @@ class MusicXMLParser:
                 print(f"Warning: Ignoring unsupported attribute: {tag}")
 
         return attr_events
-
-
-        # Divisions
-        divisions_elem = attributes_elem.find(self.ns_tag('divisions'))
-        if divisions_elem is not None:
-            self.divisions_per_quarter = int(divisions_elem.text)
-
-        # Key signature
-        key_elem = attributes_elem.find(self.ns_tag('key'))
-        if key_elem is not None:
-            fifths_elem = key_elem.find(self.ns_tag('fifths'))
-            if fifths_elem is not None:
-                self.key_signature = int(fifths_elem.text)
-        # Time signature
-        time_elem = attributes_elem.find(self.ns_tag('time'))
-        if time_elem is not None:
-            beats_elem = time_elem.find(self.ns_tag('beats'))
-            beat_type_elem = time_elem.find(self.ns_tag('beat-type'))
-            if beats_elem is not None and beat_type_elem is not None:
-                beats = int(beats_elem.text)
-                beat_type = int(beat_type_elem.text)
-                self.time_signature = (beats, beat_type)
-
-        return []
 
     def parse_direction(self, direction_elem, current_quarters):
         items = []
@@ -443,6 +436,10 @@ class MusicXMLParser:
         duration_divisions, stolen_time, is_grace = self.get_note_duration(note_elem)
         duration_quarters = duration_divisions / self.divisions_per_quarter
 
+        # Get tie
+        tie_elem = note_elem.find(self.ns_tag('tie'))
+        tie_type = None if tie_elem is None else tie_elem.attrib['type']
+
         if is_rest:
             # Return None since we don't need to create a Note object for a rest
             return Rest(duration_quarters=duration_quarters, voice_number=voice_number, is_grace=is_grace)
@@ -460,6 +457,7 @@ class MusicXMLParser:
                 xml=note_elem,
                 stolen_time=stolen_time,
                 is_grace=is_grace,
+                tie_type=tie_type,
             )
 
             return note_obj

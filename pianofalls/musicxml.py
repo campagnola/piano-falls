@@ -1,6 +1,7 @@
-import zipfile
+from typing import List
+import zipfile, os, shutil
 import xml.etree.ElementTree as ET
-from .song import Song, Pitch, Note
+from .song import Song, Pitch, Note, Rest, Event, TempoChange, KeySignatureChange, TimeSignatureChange
 
 
 def load_musicxml(filename):
@@ -8,18 +9,14 @@ def load_musicxml(filename):
     return parser.parse(filename)
 
 
-import zipfile
-import xml.etree.ElementTree as ET
-from .song import Song, Pitch, Note
-
 class MusicXMLParser:
     def __init__(self):
         # Initialize parser state
-        self.divisions = 1  # Default divisions per quarter note
+        self.divisions_per_quarter = 1  # Default divisions per quarter note
         self.tempo = 120.0  # Default tempo in BPM
         self.key_signature = 0  # Default key signature (C major/a minor)
         self.time_signature = (4, 4)  # Default time signature
-        self.voice_current_times = {}  # Keeps track of current_time for each voice
+        self.current_time = 0
         self.ties = {}  # Keep track of ongoing ties per voice
         self.notes = []
         self.cumulative_time = 0.0  # Cumulative time up to the current measure
@@ -48,7 +45,8 @@ class MusicXMLParser:
                         full_path = rootfile_elem.attrib['full-path']
                         # Read the main score file
                         score_data = zf.read(full_path)
-                        root = ET.fromstring(score_data)
+                        # parse such that we can keep track of line numbers
+                        root = read_xml_with_line_numbers(score_data)
                         return root
                 except (KeyError, ET.ParseError):
                     # No container.xml or unable to parse it
@@ -58,13 +56,13 @@ class MusicXMLParser:
                 for name in zf.namelist():
                     if (name.endswith('.xml') or name.endswith('.musicxml')) and '/' not in name:
                         score_data = zf.read(name)
-                        root = ET.fromstring(score_data)
+                        root = read_xml_with_line_numbers(score_data)
                         return root
                 raise Exception('No MusicXML file found in the MXL archive.')
         else:
             # It's an uncompressed MusicXML file
-            tree = ET.parse(filename)
-            return tree.getroot()
+            score_data = open(filename, 'rb').read()
+            return read_xml_with_line_numbers(score_data)
 
     def parse(self, filename):
         # Read the MusicXML file
@@ -102,42 +100,111 @@ class MusicXMLParser:
         # Process each part
         parts = root.findall(ns_tag('part'))
         assert parts, 'No parts found in the MusicXML file'
-        for part_index, part_elem in enumerate(parts):
-            self.parse_part(part_elem, part_index)
-        
-        assert self.notes, 'No notes found in the MusicXML file'
-        
+        parsed_parts = []
+        for part_elem in parts:
+            measures = self.parse_part(part_elem)
+            parsed_parts.append(measures)
+
+        # Collect all measures from all parts
+        all_measures = []
+        for part in parsed_parts:
+            for i,measure in enumerate(part):
+                if i >= len(all_measures):
+                    all_measures.append([])
+                all_measures[i].append(measure) 
+
+        # assign real start times and durations to notes
+        all_notes = []
+        current_time = 0
+        current_tempo = 120
+        class NoteStopEvent(Event):
+            def __init__(self, note: Note):
+                self.note = note
+                self.start_quarters = note.start_quarters + note.duration_quarters
+                Event.__init__(self, start_time=None, duration=0, duration_quarters=0)
+
+        for measures in all_measures:
+            last_time_quarters = 0
+
+            # collect all events in this measure, across all parts
+            events = []
+            for measure in measures:
+                events.extend(measure.events)
+            # for events with nonzero duration, also add a stop event
+            for ev in events:
+                if ev.duration_quarters > 0:
+                    events.append(NoteStopEvent(ev))
+            # sort all events in the measure by start time
+            events.sort(key=lambda ev: ev.start_quarters)
+
+            # keep track of notes being played
+            active_events = set()
+
+            # assign real start times and durations to notes
+            for ev in events:
+                # calculate change in time since last event
+                dq = ev.start_quarters - last_time_quarters
+                dt = dq * 60 / current_tempo
+                current_time += dt
+                last_time_quarters = ev.start_quarters
+
+                # set start time of this event
+                ev.start_time = current_time
+
+                # update duration of all active events
+                for active_ev in active_events:
+                    active_ev.duration += dt
+                
+                # if this is a tempo change, update the current tempo
+                if isinstance(ev, TempoChange):
+                    current_tempo = ev.tempo
+
+                # if this event has duration, then add it to the active events
+                if ev.duration_quarters > 0:
+                    ev.duration = 0
+                    active_events.add(ev)
+
+                # if this is a stop event, remove the corresponding note from active events
+                if isinstance(ev, NoteStopEvent):
+                    active_events.remove(ev.note)
+                else:
+                    all_notes.append(ev)
+
         # Create a Song instance with the notes
-        song = Song(notes=self.notes)
+        song = Song(events=all_notes)
         return song
 
-    def parse_part(self, part_elem, part_index):
+    def parse_part(self, part_elem):
+        """Collect all notes and other events in this part, return a list of measures
+
+        Each measure contains a set of events with attributes start_quarters and duration_quarters,
+        where start_quarters is the number of quarter notes since the beginning of the measure when the
+        event starts.
+        """
         # Reset parser state for the new part
-        self.voice_current_times = {}
         self.ties = {}
-        self.divisions = 1
-        self.tempo = 120.0
-        self.key_signature = 0
-        self.time_signature = (4, 4)
-        self.cumulative_time = 0.0  # Reset cumulative time for the part
+        self.divisions_per_quarter = None
+        self.key_signature = None
+        self.time_signature = None
 
-        # Iterate through measures
-        for measure_elem in part_elem.findall(self.ns_tag('measure')):
-            measure_notes, measure_duration = self.parse_measure(measure_elem)
+        # Iterate through measures, collecting all notes/rests/etc
+        measure_elements = part_elem.findall(self.ns_tag('measure'))
+        measures = [self.parse_measure(measure_elem) for measure_elem in measure_elements]
+        part_id = part_elem.attrib['id']
+        part_info = self.part_info.get(part_id, {})
+        part_info['id'] = part_id
+        part = Part(part_info, measures)        
+        # each measure is a list of musical elements (notes, rests, changes, etc) having a start time
+        # and optional duration in quarter notes relative to the measure beginning
 
-            # Adjust note start times by adding cumulative_time
-            for note in measure_notes:
-                note.start_time += self.cumulative_time
-                # Annotate notes with part information
-                part_id = part_elem.attrib['id']
-                note.track_n = part_index
-                note.track = self.part_info.get(part_id, {}).get('name', f'Part {part_index}')
+        # adjust times for grace notes with stolen time
+        part.handle_stolen_time()
 
-            # Update cumulative_time
-            self.cumulative_time += measure_duration
+        for measure in measures:
+            measure.set_part(part)
 
-            self.notes.extend(measure_notes)
-
+        return part
+ 
     def parse_measure(self, measure_elem):
         """
         Parse a measure element and return a list of Note instances with start times relative to the measure.
@@ -146,162 +213,78 @@ class MusicXMLParser:
         - notes: List of Note instances.
         - measure_duration: Duration of the measure in seconds.
         """
-        notes = []
+        items = []
 
-        # Check if the measure is implicit (e.g., pickup measure)
-        implicit = measure_elem.attrib.get('implicit', 'no') == 'yes'
-
-        # Initialize measure start time
-        measure_start_time = 0.0  # Start at 0.0 within the measure
+        # Track time for this measure in quarters since divisions and tempo may change at any time
+        current_quarters = 0
 
         # Process measure elements
-        measure_elements = list(measure_elem)
-        i = 0
-        while i < len(measure_elements):
-            elem = measure_elements[i]
+        for elem in measure_elem:
             tag = self.get_local_tag(elem.tag)
 
             if tag == "attributes":
-                self.parse_attributes(elem)
-                i += 1
+                items = self.parse_attributes(elem)
+                for item in items:
+                    item.start_quarters = current_quarters
+                # items should include updates to key signature, time signature, divisions, etc.
+                items.extend(items)
 
             elif tag == "direction":
-                self.parse_direction(elem)
-                i += 1
+                items.extend(self.parse_direction(elem, current_quarters))
 
             elif tag == "note":
-                note_elems, i = self.collect_chord_notes(measure_elements, i)
-                new_notes = self.process_notes(note_elems)
-                notes.extend(new_notes)
+                item = self.parse_note_element(elem)
+                item.start_quarters = current_quarters
+                items.append(item)
+                # advance clock unless this is a chord note
+                if not item.is_chord:
+                    current_quarters += item.duration_quarters
 
             elif tag in ("backup", "forward"):
-                self.handle_backup_forward(elem, tag)
-                i += 1
-
+                duration_elem = elem.find(self.ns_tag('duration'))
+                if duration_elem is not None:
+                    duration_quarters = int(duration_elem.text) / self.divisions_per_quarter
+                    if tag == "backup":
+                        current_quarters -= duration_quarters
+                    elif tag == "forward":
+                        current_quarters += duration_quarters
+            
             else:
-                i += 1
+                print(f"Warning: Ignoring unsupported element inside measure: {tag}")
 
-        # Calculate measure duration
-        measure_duration = self.calculate_measure_duration(measure_start_time, implicit)
-
-        return notes, measure_duration
-
-    def process_notes(self, note_elems):
-        """
-        Processes a list of note elements and returns Note objects with start times relative to the measure.
-
-        Returns:
-        - notes: List of Note instances.
-        """
-        notes = []
-        first_note_elem = note_elems[0]
-        voice_number = self.get_voice_and_staff(first_note_elem)[0]
-
-        # Initialize current_time for this voice if not already set
-        if voice_number not in self.voice_current_times:
-            self.voice_current_times[voice_number] = 0.0  # Start at 0.0 within the measure
-        current_time = self.voice_current_times[voice_number]
-
-        # Process all chord notes
-        duration_seconds = None
-        for note_elem in note_elems:
-            note_obj, note_duration_seconds, note_voice_number = self.parse_note_element(
-                note_elem, current_time_override=current_time)
-            if note_obj:
-                # Do not adjust note.start_time here
-                notes.append(note_obj)
-            duration_seconds = note_duration_seconds  # All chord notes share the same duration
-
-        # Advance current_time for the voice after processing
-        self.voice_current_times[voice_number] = current_time + duration_seconds
-
-        return notes
-
-    def collect_chord_notes(self, measure_elements, index):
-        """
-        Collects notes that are part of the same chord starting from the given index.
-
-        Returns:
-        - chord_notes: List of note elements that form the chord.
-        - next_index: The index to continue parsing from.
-        """
-        note_elem = measure_elements[index]
-        chord_notes = [note_elem]
-        index += 1
-        while index < len(measure_elements):
-            next_elem = measure_elements[index]
-            next_tag = self.get_local_tag(next_elem.tag)
-            if next_tag == "note":
-                chord_elem = next_elem.find(self.ns_tag('chord'))
-                if chord_elem is not None:
-                    chord_notes.append(next_elem)
-                    index += 1
-                else:
-                    break  # Not a chord note
-            else:
-                break  # Not a note
-        return chord_notes, index
-
-    def handle_backup_forward(self, elem, tag):
-        """
-        Handles backup and forward elements to adjust the current time.
-
-        Parameters:
-        - elem: The XML element representing the backup or forward.
-        - tag: The tag name ('backup' or 'forward').
-        """
-        duration_elem = elem.find(self.ns_tag('duration'))
-        if duration_elem is not None:
-            duration_divisions = int(duration_elem.text)
-            duration = (duration_divisions / self.divisions) * (60.0 / self.tempo)
-            # Adjust current_time for all voices
-            for voice in self.voice_current_times:
-                if tag == "backup":
-                    self.voice_current_times[voice] -= duration
-                elif tag == "forward":
-                    self.voice_current_times[voice] += duration
-
-    def calculate_measure_duration(self, measure_start_time, implicit):
-        """
-        Calculates the duration of the measure.
-
-        Parameters:
-        - measure_start_time: The start time of the measure.
-        - implicit: Boolean indicating if the measure is implicit (pickup measure).
-
-        Returns:
-        - measure_duration: The duration of the measure in seconds.
-        """
-        # Get the expected measure duration based on time signature
-        beats, beat_type = self.time_signature
-        # Calculate the duration of one beat in seconds
-        beat_duration = (60.0 / self.tempo) * (4 / beat_type)
-        expected_measure_duration = beats * beat_duration
-
-        if implicit:
-            # For implicit measures, measure duration is the maximum of voice times minus measure start time
-            measure_end_time = max(self.voice_current_times.values()) if self.voice_current_times else measure_start_time
-            measure_duration = measure_end_time - measure_start_time
-        else:
-            # For explicit measures, measure duration is expected_measure_duration
-            measure_duration = expected_measure_duration
-
-            # If the total duration of notes and rests is less than expected, we need to adjust the voice_current_times
-            # Add implicit rests to fill the measure
-            for voice in self.voice_current_times:
-                voice_time = self.voice_current_times[voice]
-                if voice_time - measure_start_time < expected_measure_duration:
-                    # Advance the current_time to the end of the measure
-                    self.voice_current_times[voice] = measure_start_time + expected_measure_duration
-
-        return measure_duration
-
+        measure_number = int(measure_elem.attrib['number'])
+        measure = Measure(measure_number, events=items)
+        for item in items:
+            item.measure = measure
+        
+        return measure
 
     def parse_attributes(self, attributes_elem):
+        attr_events = []
+        for attr in attributes_elem:
+            tag = self.get_local_tag(attr.tag)
+            if tag == 'divisions':
+                self.divisions_per_quarter = int(attr.text)
+                # do we need to remember these?
+                # attr_events.append(DivisionsChange(int(attr.text)))
+            elif tag == 'key':
+                fifths = int(attr.find(self.ns_tag('fifths')).text)
+                attr_events.append(KeySignatureChange(fifths, duration_quarters=0))
+            elif tag == 'time':
+                beats = int(attr.find(self.ns_tag('beats')).text)
+                beat_type = int(attr.find(self.ns_tag('beat-type')).text)
+                attr_events.append(TimeSignatureChange(beats, beat_type, duration_quarters=0))
+            else:
+                print(f"Warning: Ignoring unsupported attribute: {tag}")
+
+        return attr_events
+
+
         # Divisions
         divisions_elem = attributes_elem.find(self.ns_tag('divisions'))
         if divisions_elem is not None:
-            self.divisions = int(divisions_elem.text)
+            self.divisions_per_quarter = int(divisions_elem.text)
+
         # Key signature
         key_elem = attributes_elem.find(self.ns_tag('key'))
         if key_elem is not None:
@@ -318,11 +301,15 @@ class MusicXMLParser:
                 beat_type = int(beat_type_elem.text)
                 self.time_signature = (beats, beat_type)
 
-    def parse_direction(self, direction_elem):
-        # Handle tempo changes
+        return []
+
+    def parse_direction(self, direction_elem, current_quarters):
+        items = []
         sound_elem = direction_elem.find(self.ns_tag('sound'))
         if sound_elem is not None and 'tempo' in sound_elem.attrib:
-            self.tempo = float(sound_elem.attrib['tempo'])
+            tempo = float(sound_elem.attrib['tempo'])
+            items.append(TempoChange(start_quarters=current_quarters, duration_quarters=0, tempo=tempo))
+        return items
 
     def get_voice_and_staff(self, note_elem):
         # Get voice number (default to 1 if not specified)
@@ -335,8 +322,19 @@ class MusicXMLParser:
 
         return voice_number, staff_number
 
+    def get_note_duration(self, note_elem):
+        """Get the duration of a note 
+        
+        Returns
+        -------
+        duration_divisions : int
+            Duration of the note in divisions
+        stolen_time : float
+            Time stolen from the next (positive values) or previous (negative values) note
+        """
+        # by default, time is not stolen
+        stolen_time = 0.0
 
-    def get_duration(self, note_elem):
         # Get duration in divisions
         duration_elem = note_elem.find(self.ns_tag('duration'))
         duration_divisions = int(duration_elem.text) if duration_elem is not None else 0
@@ -352,10 +350,18 @@ class MusicXMLParser:
                 # Adjust duration_divisions
                 duration_divisions = duration_divisions * normal_notes / actual_notes
 
-        # Calculate duration in seconds
-        duration = (duration_divisions / self.divisions) * (60.0 / self.tempo)
-        return duration_divisions, duration
+        # Handle grace notes
+        grace_elem = note_elem.find(self.ns_tag('grace'))
+        if grace_elem is not None:
+            # if make-time attribute is present, use it to calculate the duration in divisions
+            if 'make-time' in grace_elem.attrib:
+                duration_divisions = float(grace_elem.attrib['make-time'])
+            elif 'steal-time-following' in grace_elem.attrib:
+                stolen_time = float(grace_elem.attrib['steal-time-following'])
+            elif 'steal-time-previous' in grace_elem.attrib:
+                stolen_time = -float(grace_elem.attrib['steal-time-previous'])
 
+        return duration_divisions, stolen_time
 
     def process_pitch(self, note_elem):
         pitch_elem = note_elem.find(self.ns_tag('pitch'))
@@ -389,7 +395,7 @@ class MusicXMLParser:
 
         # Adjust for key signature if no alter or accidental is specified
         if alter_elem is None and accidental_elem is None:
-            accidentals = self.get_key_signature_accidentals()
+            accidentals = key_signature_accidentals.get(self.key_signature, [])
             if step in accidentals:
                 if self.key_signature > 0:
                     alter += 1  # Apply sharp
@@ -403,30 +409,9 @@ class MusicXMLParser:
         # Calculate MIDI note number
         midi_note = (octave + 1) * 12 + semitone
 
-        return midi_note
+        return Pitch(midi_note=midi_note)
 
-
-    def get_key_signature_accidentals(self):
-        key_signature_accidentals = {
-            -7: ['B', 'E', 'A', 'D', 'G', 'C', 'F'],
-            -6: ['B', 'E', 'A', 'D', 'G', 'C'],
-            -5: ['B', 'E', 'A', 'D', 'G'],
-            -4: ['B', 'E', 'A', 'D'],
-            -3: ['B', 'E', 'A'],
-            -2: ['B', 'E'],
-            -1: ['B'],
-            0: [],
-            1: ['F'],
-            2: ['F', 'C'],
-            3: ['F', 'C', 'G'],
-            4: ['F', 'C', 'G', 'D'],
-            5: ['F', 'C', 'G', 'D', 'A'],
-            6: ['F', 'C', 'G', 'D', 'A', 'E'],
-            7: ['F', 'C', 'G', 'D', 'A', 'E', 'B'],
-        }
-        return key_signature_accidentals.get(self.key_signature, [])
-
-    def parse_note_element(self, note_elem, current_time_override=None):
+    def parse_note_element(self, note_elem):
         # Check if it's a rest
         is_rest = note_elem.find(self.ns_tag('rest')) is not None
 
@@ -434,32 +419,198 @@ class MusicXMLParser:
         voice_number, staff_number = self.get_voice_and_staff(note_elem)
 
         # Get duration
-        duration_divisions, duration = self.get_duration(note_elem)
-        duration_seconds = duration
-
-        # Get the current_time for this voice
-        if current_time_override is not None:
-            current_time = current_time_override
-        else:
-            current_time = self.voice_current_times.get(voice_number, 0.0)
+        duration_divisions, stolen_time = self.get_note_duration(note_elem)
+        duration_quarters = duration_divisions / self.divisions_per_quarter
 
         if is_rest:
             # Return None since we don't need to create a Note object for a rest
-            return None, duration_seconds, voice_number
+            return Rest(duration_quarters=duration_quarters, voice_number=voice_number)
         else:
             # Process pitch
-            midi_note = self.process_pitch(note_elem)
-            if midi_note is None:
-                # Unpitched note or rest
-                return None, duration_seconds, voice_number
+            pitch = self.process_pitch(note_elem)
 
             # Create the note object
             note_obj = Note(
-                start_time=current_time,
-                pitch=Pitch(midi_note=midi_note),
-                duration=duration,
+                start_time=None,  # will set this later
+                pitch=pitch,
+                duration_quarters=duration_quarters,
                 staff=staff_number,
-                voice=voice_number
+                voice=voice_number,
+                xml=note_elem,
+                stolen_time=stolen_time,
             )
 
-            return note_obj, duration_seconds, voice_number
+            return note_obj
+
+
+def write_mxl(musicxml_root, mxl_file):
+    """Write an mxl file from an xml root element. 
+
+    Zips a score.xml and a META-INF/container.xml file into a .mxl file.
+    """
+    # create a temp directory
+    path = os.path.splitext(mxl_file)[0]
+    tmp_path = os.path.join(path, '_tmp')
+    meta_inf_path = os.path.join(tmp_path, 'META-INF')
+    try:
+        os.makedirs(meta_inf_path)
+
+        # write score.xml
+        score_xml_path = os.path.join(tmp_path, 'score.xml')
+        with open(score_xml_path, 'wb') as f:
+            f.write(ET.tostring(musicxml_root))
+
+        # write container.xml
+        container_xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <container>
+            <rootfiles>
+                <rootfile full-path="score.xml">
+                </rootfile>
+            </rootfiles>
+            </container>
+        """
+        container_xml_path = os.path.join(meta_inf_path, 'container.xml')
+        with open(container_xml_path, 'w') as f:
+            f.write(container_xml)
+
+        # zip the files
+        zipfile = shutil.make_archive(tmp_path, 'zip', tmp_path)
+        os.rename(zipfile, mxl_file)
+
+    finally:
+        shutil.rmtree(tmp_path)
+
+
+class XmlLineReader:
+    """Iterates over an XML file line-by-line, keeping track of the current line.
+    
+    https://stackoverflow.com/a/78924329/643629
+    """
+    def __init__(self, xml_str):
+        self._iter = iter(xml_str.splitlines())
+        self._current_line = -1
+
+    @property
+    def line(self): 
+        return self._current_line
+    
+    def read(self, *_):
+        try:
+            self._current_line += 1
+            return next(self._iter)
+        except:
+            return None
+        
+def read_xml_with_line_numbers(xml_str):
+    source = XmlLineReader(xml_str)
+    iter = ET.iterparse(source, ("start",))
+    for _, elem in iter:
+        elem.set("xml_lineno", str(source.line))
+    return iter.root
+
+
+key_signature_accidentals = {
+    -7: ['B', 'E', 'A', 'D', 'G', 'C', 'F'],
+    -6: ['B', 'E', 'A', 'D', 'G', 'C'],
+    -5: ['B', 'E', 'A', 'D', 'G'],
+    -4: ['B', 'E', 'A', 'D'],
+    -3: ['B', 'E', 'A'],
+    -2: ['B', 'E'],
+    -1: ['B'],
+    0: [],
+    1: ['F'],
+    2: ['F', 'C'],
+    3: ['F', 'C', 'G'],
+    4: ['F', 'C', 'G', 'D'],
+    5: ['F', 'C', 'G', 'D', 'A'],
+    6: ['F', 'C', 'G', 'D', 'A', 'E'],
+    7: ['F', 'C', 'G', 'D', 'A', 'E', 'B'],
+}
+
+
+class Measure:
+    def __init__(self, number:int, events: List[Event]):
+        self.number = number
+        self.events = events
+
+    def __iter__(self):
+        return iter(self.events)
+    
+    def __len__(self):
+        return len(self.events)
+
+    def set_part(self, part):
+        self.part = part
+        for item in self.events:
+            item.part = part
+
+
+class Part:
+    def __init__(self, info, measures: List[Measure]):
+        self.info = info
+        self.measures = measures
+
+        # annotate all events with part info
+        for measure in self.measures:
+            for event in measure:
+                event.track_n = self.info['id']
+                event.track = self.info['name']
+
+    def __iter__(self):
+        return iter(self.measures)
+
+    def __len__(self):
+        return len(self.measures)
+
+    def handle_stolen_time(self):
+        """Adjust note timing for grace notes with stolen time"""
+
+        # TODO: how do grace notes interact with chords and voices?
+        #       what happens when we backup/forward over or near a grace note?
+
+        all_notes = []
+        for measure in self.measures:
+            all_notes.extend([ev for ev in measure.events if isinstance(ev, Note)])
+        
+        next_note = None
+        while all_notes:
+            prev_note = next_note
+            next_note = None
+            grace_notes = []
+            while all_notes:
+                note = all_notes.pop(0)
+                if not isinstance(note, Note):
+                    continue
+                is_grace_note = getattr(note, 'stolen_time', 0) != 0
+                if is_grace_note:
+                    grace_notes.append(note)
+                    continue
+                else:
+                    if grace_notes:
+                        next_note = note
+                        break
+                    else:
+                        prev_note = note
+            # we now have a previous note + grace notes + next note
+            # first steal time from other notes and give to grace notes
+            for gn in grace_notes:
+                stolen_note = next_note if gn.stolen_time > 0 else prev_note
+                assert stolen_note is not None, "Grace note has no note to steal time from"
+                stolen_duration_quarters = stolen_note.duration_quarters * gn.stolen_time / 100
+                stolen_note.duration_quarters -= stolen_duration_quarters
+                gn.duration_quarters += stolen_duration_quarters
+                if gn.stolen_time > 0:
+                    gn.start_quarters += stolen_duration_quarters
+
+            # next, determine the start time of the grace notes
+            start = prev_note.start_quarters + prev_note.duration_quarters
+            for gn in grace_notes:
+                gn.start_quarters = start
+                start += gn.duration_quarters
+
+
+class DivisionsChange(Event):
+    def __init__(self, divisions, start_time=None, **kwds):
+        self.divisions = divisions
+        super().__init__(start_time=start_time, **kwds)

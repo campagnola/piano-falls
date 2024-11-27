@@ -9,11 +9,37 @@ class NotesItem(GraphicsItemGroup):
         super().__init__()
         self._bounds = QtCore.QRectF()
         self.notes = []
+        self.colors = {}
+
+        alpha = 220
+        self.default_colors = [
+            (100, 255, 100, alpha),
+            (100, 100, 255, alpha),
+            (255, 100, 100, alpha),
+            (255, 255, 100, alpha),
+            (255, 100, 255, alpha),
+            (100, 255, 255, alpha),
+        ]
+
         self.key_spec = Keyboard.key_spec()
         self.bars = [QtWidgets.QGraphicsLineItem(self.key_spec[0]['x_pos'], 0, self.key_spec[-1]['x_pos'] + self.key_spec[-1]['width'], 0)]
         for item in self.bars:
             item.setPen(Pen((100, 100, 100)))
             self.addToGroup(item)
+
+    def set_colors(self, colors):
+        self.colors = colors
+        self.update()
+
+    def set_color(self, track_key, color):
+        self.colors[track_key] = color
+        self.update()
+
+    def get_color(self, track_key):
+        if track_key not in self.colors:
+            color = self.default_colors[len(self.colors) % len(self.default_colors)]
+            self.colors[track_key] = color
+        return self.colors[track_key]
 
     def set_notes(self, notes):
         bounds = QtCore.QRectF()
@@ -24,21 +50,15 @@ class NotesItem(GraphicsItemGroup):
         self.notes.clear()
 
         # Create new notes
-        alpha = 220
-        colors = {
-            0: (100, 255, 100, alpha),
-            1: (100, 100, 255, alpha),
-            2: (255, 100, 100, alpha),
-            3: (255, 255, 100, alpha),
-            4: (255, 100, 255, alpha),
-            5: (100, 255, 255, alpha),
-        }
         for i, note in enumerate(notes):
             if note.duration == 0:
                 continue
             keyspec = self.key_spec[note.pitch.key]
+            track_key = (note.part, note.staff)
+            color = self.get_color(track_key)
+
             note_item = NoteItem(x=keyspec['x_pos'], y=note.start_time, w=keyspec['width'], h=note.duration, 
-                                 color=colors[note.track_n], z=i)
+                                 color=color, z=i)
             self.notes.append(note_item)
             self.addToGroup(note_item)
             bounds = bounds.united(note_item.boundingRect())

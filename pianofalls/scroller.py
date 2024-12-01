@@ -1,6 +1,7 @@
 import queue
 import threading, math, time
 from .qt import QtCore
+import atexit
 
 
 class TimeScroller(QtCore.QObject):
@@ -21,8 +22,10 @@ class TimeScroller(QtCore.QObject):
 
         self.set_scroll_mode('wait')
 
+        self.stop_thread = False
         self.thread = threading.Thread(target=self.auto_scroll_loop, daemon=True)
         self.thread.start()
+        atexit.register(self.stop)
 
     def set_scrolling(self, scrolling):
         self.scrolling = scrolling
@@ -67,7 +70,7 @@ class TimeScroller(QtCore.QObject):
 
     def auto_scroll_loop(self):
         last_time = time.perf_counter()
-        while True:
+        while not self.stop_thread:
             now = time.perf_counter()
             dt = now - last_time
             last_time = now
@@ -91,6 +94,10 @@ class TimeScroller(QtCore.QObject):
                 self.set_scrolling(False)
 
             time.sleep(0.003)
+
+    def stop(self):
+        self.stop_thread = True
+        self.thread.join()
 
 
 class ScrollMode:

@@ -50,12 +50,11 @@ class Song:
 
 
 class Event:
-    repr_keys = ['start_time', 'duration', 'part', 'staff']
-    def __init__(self, start_time, duration=0, part=None, staff=None, **kwds):
+    repr_keys = ['start_time', 'duration', 'part']
+    def __init__(self, start_time, duration=0, part=None, **kwds):
         self.start_time = start_time
         self.duration = duration
         self.part = part
-        self.staff = staff
         for k,v in kwds.items():
             setattr(self, k, v)
 
@@ -89,12 +88,13 @@ class Barline(Event):
 
 
 class VoiceEvent(Event):
-    repr_keys = Event.repr_keys + ['voice', 'is_chord']
+    repr_keys = Event.repr_keys + ['track', 'staff', 'voice', 'is_chord']
     def __init__(self, duration=None, start_time=None, track=None, 
                  staff=1, voice=1, is_chord=False, **kwds):
         self.track = track
         self.voice = voice
         self.is_chord = is_chord
+        self.staff = staff
         super().__init__(start_time=start_time, duration=duration, **kwds)
 
 

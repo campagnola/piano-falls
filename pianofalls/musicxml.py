@@ -583,8 +583,12 @@ class Part:
                 event.track_n = self.info['id']
                 event.track = self.info['name']
 
+    @property
+    def name(self):
+        return self.info.get('name', 'unnamed')
+
     def __repr__(self):
-        return f"<Part {self.info['id']}: {self.info.get('name', 'unnamed')}>"
+        return f"<Part {self.info['id']}: {self.name}>"
 
     def __iter__(self):
         return iter(self.measures)

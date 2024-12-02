@@ -25,6 +25,9 @@ class Waterfall(QtWidgets.QGraphicsWidget):
 
         self.update_transform()
 
+    def set_track_colors(self, track_colors):
+        self.notes_item.set_track_colors(track_colors)
+
     def set_song(self, song: Song):
         self.song = song
         self.notes_item.set_notes(song.notes)

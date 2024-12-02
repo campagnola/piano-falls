@@ -38,6 +38,9 @@ class Overview(QtWidgets.QGraphicsView):
         self.time_line.setPen(pen)
         self.time_line.setParentItem(self.group)
 
+    def set_track_colors(self, track_colors):
+        self.notes_item.set_track_colors(track_colors)
+
     def set_song(self, song: Song):
         self.notes_item.set_notes(song.notes)
         self.resizeEvent()

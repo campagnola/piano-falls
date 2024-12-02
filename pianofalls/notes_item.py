@@ -9,17 +9,8 @@ class NotesItem(GraphicsItemGroup):
         super().__init__()
         self._bounds = QtCore.QRectF()
         self.notes = []
-        self.colors = {}
 
-        alpha = 220
-        self.default_colors = [
-            (100, 255, 100, alpha),
-            (100, 100, 255, alpha),
-            (255, 100, 100, alpha),
-            (255, 255, 100, alpha),
-            (255, 100, 255, alpha),
-            (100, 255, 255, alpha),
-        ]
+        self.track_colors = {}
 
         self.key_spec = Keyboard.key_spec()
         self.bars = [QtWidgets.QGraphicsLineItem(self.key_spec[0]['x_pos'], 0, self.key_spec[-1]['x_pos'] + self.key_spec[-1]['width'], 0)]
@@ -27,19 +18,14 @@ class NotesItem(GraphicsItemGroup):
             item.setPen(Pen((100, 100, 100)))
             self.addToGroup(item)
 
-    def set_colors(self, colors):
-        self.colors = colors
-        self.update()
-
-    def set_color(self, track_key, color):
-        self.colors[track_key] = color
-        self.update()
+    def set_track_colors(self, track_colors):
+        self.track_colors = track_colors
+        print('track_colors:', track_colors)
+        for note_item in self.notes:
+            note_item.set_color(self.get_color(note_item.track_key))
 
     def get_color(self, track_key):
-        if track_key not in self.colors:
-            color = self.default_colors[len(self.colors) % len(self.default_colors)]
-            self.colors[track_key] = color
-        return self.colors[track_key]
+        return self.track_colors.get(track_key, (100, 100, 100))
 
     def set_notes(self, notes):
         bounds = QtCore.QRectF()
@@ -58,7 +44,7 @@ class NotesItem(GraphicsItemGroup):
             color = self.get_color(track_key)
 
             note_item = NoteItem(x=keyspec['x_pos'], y=note.start_time, w=keyspec['width'], h=note.duration, 
-                                 color=color, z=i)
+                                 color=color, z=i, note=note)
             self.notes.append(note_item)
             self.addToGroup(note_item)
             bounds = bounds.united(note_item.boundingRect())
@@ -70,7 +56,10 @@ class NotesItem(GraphicsItemGroup):
 
 
 class NoteItem(GraphicsItemGroup):
-    def __init__(self, x, y, w, h, color, z):
+    def __init__(self, x, y, w, h, color, z, note):
+        self.note = note
+        self.track_key = (note.part, note.staff)
+
         self.grad = QtGui.QLinearGradient(QtCore.QPointF(0, 0), QtCore.QPointF(0, 1))
         self.grad.setCoordinateMode(QtGui.QGradient.CoordinateMode.ObjectMode)
         color = 0.5 * Color(color)
@@ -88,3 +77,9 @@ class NoteItem(GraphicsItemGroup):
         # self.line = QtWidgets.QGraphicsLineItem(x, y, x+w, y)
         # self.addToGroup(self.line)
         # self.line.setPen(Pen((255, 255, 255)))
+
+    def set_color(self, color):
+        self.grad.setColorAt(np.clip(.05/self.rect.rect().height(), 0, 1), Color(color))
+        self.grad.setColorAt(1, Color(color) * 0.5)
+        self.rect.setBrush(self.grad)
+        self.update()

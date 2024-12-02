@@ -8,6 +8,7 @@ from .scroller import TimeScroller
 from .midi import load_midi
 from .musicxml import load_musicxml
 from .file_tree import FileTree
+from .tracklist import TrackList
 
 
 class MainWindow(QtWidgets.QWidget):
@@ -26,9 +27,15 @@ class MainWindow(QtWidgets.QWidget):
         self.splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         self.layout.addWidget(self.splitter, 1, 0, 1, 1)
 
+        self.left_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        self.splitter.addWidget(self.left_splitter)
+
         self.file_tree = FileTree()
         self.file_tree.set_roots(['~/midi', '~/Downloads'])
-        self.splitter.addWidget(self.file_tree)
+        self.left_splitter.addWidget(self.file_tree)
+
+        self.track_list = TrackList()
+        self.left_splitter.addWidget(self.track_list)
 
         self.view = View()
         self.splitter.addWidget(self.view)
@@ -71,9 +78,13 @@ class MainWindow(QtWidgets.QWidget):
         self.overview.set_song(song)
         self.view.set_song(song)
         self.scroller.set_song(song)
+        self.track_list.set_song(song)
+        self.track_list.colors_changed.connect(self.update_track_colors)
+        self.track_list.modes_changed.connect(self.update_track_modes)
 
         self.window().setWindowTitle(filename)
         self.last_filename = filename
+        self.update_track_colors()
         self.view.focusWidget()
 
     def connect_midi_input(self, midi_input):
@@ -95,3 +106,11 @@ class MainWindow(QtWidgets.QWidget):
     def time_changed(self, time):
         self.view.set_time(time)
         self.overview.set_time(time)
+
+    def update_track_colors(self):
+        self.track_colors = self.track_list.track_colors()
+        self.view.set_track_colors(self.track_colors)
+        self.overview.set_track_colors(self.track_colors)
+
+    def update_track_modes(self):
+        pass

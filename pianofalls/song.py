@@ -3,6 +3,8 @@ class Song:
     """Encapsulates a sequence of events in a song (notes, bars, lyrics, etc.)
     """
     def __init__(self, events):
+        self._tracks = None
+
         # *events* can be a list of dicts describing each note
         # keys are: start_time, pitch, duration, track, track_n, on_msg, off_msg
         self.notes = []
@@ -46,7 +48,15 @@ class Song:
                 return closest_index
             closest_index += 1
 
-
+    @property
+    def tracks(self):
+        """For musicxml, a track is the combination of part and staff. For midi,
+        tracks and parts are the same thing.
+        """
+        if self._tracks is None:
+            self._tracks = set([(getattr(e, 'part', None), getattr(e, 'staff', None)) for e in self.events])
+            
+        return self._tracks
 
 
 class Event:

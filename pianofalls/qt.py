@@ -29,7 +29,9 @@ class Brush(QtGui.QBrush):
 
 class Color(QtGui.QColor):
     def __init__(self, arg):
-        super().__init__(QtGui.QColor(*arg))
+        if not isinstance(arg, QtGui.QColor):
+            arg = QtGui.QColor(*arg)
+        super().__init__(arg)
 
     def __mul__(self, x):
         return Color((

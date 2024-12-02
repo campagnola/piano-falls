@@ -48,6 +48,7 @@ class MainWindow(QtWidgets.QWidget):
 
         self.setLayout(self.layout)
 
+
         self.scroller.current_time_changed.connect(self.time_changed)
         self.ctrl_panel.speed_changed.connect(self.scroller.set_scroll_speed)
         self.ctrl_panel.zoom_changed.connect(self.view.waterfall.set_zoom)
@@ -56,6 +57,8 @@ class MainWindow(QtWidgets.QWidget):
         self.file_tree.file_double_clicked.connect(self.load)
 
         self.resize(1200, 800)
+        self.left_splitter.setSizes([600, 200])
+        self.splitter.setSizes([250, 950])
         self.show()
         self.view.focusWidget()
         self.overview.resizeEvent()

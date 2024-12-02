@@ -58,11 +58,15 @@ class TrackList(QtWidgets.QWidget):
             i += 1
             self.track_items[track] = item
 
+        for i in range(3):
+            self.tree.resizeColumnToContents(i)
+
 
 class TrackItem(QtWidgets.QTreeWidgetItem):
     def __init__(self, track, color):
         self.track = track
         self.color_button = pg.ColorButton(color=color)
+        self.color_button.setMaximumWidth(40)
         self.play_mode = QtWidgets.QComboBox()
         self.play_mode.addItems(['autoplay', 'follow', 'mute'])
         super().__init__([self.track_name])

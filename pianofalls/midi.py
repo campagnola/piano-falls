@@ -93,7 +93,7 @@ def load_midi(filename:str) -> Song:
             if note_key in current_notes:
                 # end previous note here
                 prev_note = current_notes[note_key]
-                prev_note['duration'] = msg_time - prev_note['start_time']
+                prev_note.duration = msg_time - prev_note.start_time
             current_notes[note_key] = note
         elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
             note_key = (msg.note, msg.channel)

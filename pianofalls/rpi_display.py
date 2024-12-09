@@ -1,3 +1,4 @@
+import numpy as np
 from pianofalls.qt import QtGui, QtCore
 
 

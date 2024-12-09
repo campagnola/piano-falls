@@ -40,8 +40,6 @@ class MainWindow(QtWidgets.QWidget):
         self.view = View()
         self.splitter.addWidget(self.view)
 
-        self.splitter.setSizes([400, 400])
-
         self.overview = Overview()
         self.layout.addWidget(self.overview, 1, 1, 1, 1)
         self.overview.setMaximumWidth(100)
@@ -58,7 +56,7 @@ class MainWindow(QtWidgets.QWidget):
 
         self.resize(1200, 800)
         self.left_splitter.setSizes([600, 200])
-        self.splitter.setSizes([250, 950])
+        self.splitter.setSizes([400, 800])
         self.show()
         self.view.focusWidget()
         self.overview.resizeEvent()
@@ -78,7 +76,7 @@ class MainWindow(QtWidgets.QWidget):
 
         self.song = song
         
-        self.overview.set_song(song)
+        # self.overview.set_song(song)
         self.view.set_song(song)
         self.scroller.set_song(song)
         self.track_list.set_song(song)

@@ -1,7 +1,7 @@
 import time
 import mido
 from .qt import QtCore
-from .song import Pitch, Song
+from .song import Pitch, Song, Note, Part
 
 
 class MidiInput(QtCore.QObject):
@@ -40,14 +40,16 @@ def load_midi(filename:str) -> Song:
     assert midi.type in (0, 1)
 
     messages = []
+    parts = []
     for i, track in enumerate(midi.tracks):
+        parts.append(MidiPart(track, i))
         # create a dict for each message that contains the absolute tick count
         # and the message itself
         ticks = 0
         prev_track_msg = None
         for msg in track:
             ticks += msg.time
-            messages.append({'ticks': ticks, 'midi': msg, 'track': track, 'track_n': i, 'prev_track_msg': prev_track_msg})
+            messages.append({'ticks': ticks, 'midi': msg, 'part': parts[-1], 'prev_track_msg': prev_track_msg})
             prev_track_msg = messages[-1]
 
     # sort messages by tick
@@ -80,28 +82,35 @@ def load_midi(filename:str) -> Song:
         msg_time = message['time']
         if msg.type == 'note_on' and msg.velocity > 0:
             note_key = (msg.note, msg.channel)
-            note_dict = {
-                'start_time': msg_time, 'pitch': Pitch(midi_note=msg.note), 'duration': None, 
-                'track': message['track'], 'track_n': message['track_n'],
-                'on_msg': message, 'off_msg': None
-            }
-            notes.append(note_dict)
+            note = Note(
+                start_time=msg_time, 
+                pitch=Pitch(midi_note=msg.note), 
+                duration=None, 
+                part=message['part'],
+                on_msg=message, off_msg=None
+            )
+            notes.append(note)
             if note_key in current_notes:
                 # end previous note here
                 prev_note = current_notes[note_key]
                 prev_note['duration'] = msg_time - prev_note['start_time']
-            current_notes[note_key] = note_dict
+            current_notes[note_key] = note
         elif msg.type == 'note_off' or (msg.type == 'note_on' and msg.velocity == 0):
             note_key = (msg.note, msg.channel)
             if note_key not in current_notes:
                 continue
             note_end = msg_time
-            note_start = current_notes[note_key]['start_time']
-            current_notes[note_key]['duration'] = note_end - note_start
-            current_notes[note_key]['off_msg'] = msg
+            note_start = current_notes[note_key].start_time
+            current_notes[note_key].duration = note_end - note_start
             del current_notes[note_key]
 
-    # filter out empty notes
-    filtered_notes = [n for n in notes if n['duration'] > 0]
+    return Song(notes)
 
-    return Song(filtered_notes)
+
+class MidiPart(Part):
+    def __init__(self, midi_track, track_n):
+        track_name = midi_track.name
+        if track_name == '':
+            track_name = f'MIDI track {track_n}'
+        Part.__init__(self, name=track_name)
+        self.midi_track = midi_track

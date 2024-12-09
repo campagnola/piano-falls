@@ -1,7 +1,7 @@
 from typing import List
 import zipfile, os, shutil
 import xml.etree.ElementTree as ET
-from .song import (Song, Pitch, Note, Rest, Event, Barline,
+from .song import (Song, Pitch, Note, Rest, Event, Barline, Part,
                    TempoChange, KeySignatureChange, TimeSignatureChange)
 
 
@@ -572,8 +572,10 @@ class Measure:
             item.part = part
 
 
-class Part:
+class MusicXMLPart(Part):
     def __init__(self, info, measures: List[Measure]):
+        name = info.get('name', f'Part {info["id"]}')
+        Part.__init__(self, name=name)
         self.info = info
         self.measures = measures
 
@@ -582,10 +584,6 @@ class Part:
             for event in measure:
                 event.track_n = self.info['id']
                 event.track = self.info['name']
-
-    @property
-    def name(self):
-        return self.info.get('name', 'unnamed')
 
     def __repr__(self):
         return f"<Part {self.info['id']}: {self.name}>"

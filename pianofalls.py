@@ -20,8 +20,11 @@ class GraphicsViewUpdateWatcher(QtCore.QObject):
         # self.v.show()
 
     def eventFilter(self, obj, event):
-        if obj == self.view.viewport() and event.type() == QtCore.QEvent.Paint:
-            self.timer.singleShot(0, self.emit_frame)
+        try:
+            if obj == self.view.viewport() and event.type() == QtCore.QEvent.Paint:
+                self.timer.singleShot(0, self.emit_frame)
+        except RuntimeError:
+            pass  # exit error
         return False
     
     def emit_frame(self):
@@ -31,6 +34,7 @@ class GraphicsViewUpdateWatcher(QtCore.QObject):
         # print(time.time() - start)
         # array = ndarray_from_qimage(frame)[..., :3]
         # self.new_frame.emit(array[:64, :512].copy())
+        return
 
         source_rect = self.view.waterfall.sceneBoundingRect()
         source_rect.setLeft(-2)

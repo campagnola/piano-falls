@@ -99,9 +99,8 @@ class Barline(Event):
 
 class VoiceEvent(Event):
     repr_keys = Event.repr_keys + ['track', 'staff', 'voice', 'is_chord']
-    def __init__(self, duration=None, start_time=None, track=None, 
+    def __init__(self, duration=None, start_time=None, 
                  staff=1, voice=1, is_chord=False, **kwds):
-        self.track = track
         self.voice = voice
         self.is_chord = is_chord
         self.staff = staff
@@ -137,3 +136,13 @@ class Pitch:
 
     def __repr__(self):
         return f'<{self.__class__.__name__} {self.name} ({self.midi_note})>'
+
+
+class Part:
+    """Represents a part in a song. 
+
+    In MusicXML, a part is a single line of music (usually one instrument; may have multiple staves). 
+    In MIDI, a part is a track.
+    """
+    def __init__(self, name):
+        self.name = name

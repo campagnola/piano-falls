@@ -9,7 +9,7 @@ class FileTree(QtWidgets.QTreeWidget):
 
     def __init__(self):
         super().__init__()
-        self.setHeaderLabels(['File'])
+        self.setHeaderLabels(['File', 'Rating', 'Difficulty', 'Tags'])
         self.itemDoubleClicked.connect(self.on_item_double_clicked)
         self.itemExpanded.connect(self.on_item_expanded)
         self.setEditTriggers(self.SelectedClicked)
@@ -32,7 +32,6 @@ class FileTree(QtWidgets.QTreeWidget):
             return
         item = FileTreeItem(path)
         self.addTopLevelItem(item)
-        # expand
         item.setExpanded(True)
 
     def on_item_expanded(self, item):

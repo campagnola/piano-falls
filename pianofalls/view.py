@@ -1,3 +1,4 @@
+import time
 from .qt import QtWidgets, QtGui, QtCore
 from .keyboard import Keyboard
 from .waterfall import Waterfall
@@ -10,6 +11,9 @@ class View(QtWidgets.QGraphicsView):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.last_draw_time = time.perf_counter()
+        self.average_draw_time = 0
+
         self.scene = QtWidgets.QGraphicsScene(parent=self)
         self.setScene(self.scene)
 
@@ -64,3 +68,11 @@ class View(QtWidgets.QGraphicsView):
 
     def on_midi_message(self, midi_input, msg):
         self.keyboard.midi_message(msg)
+
+    def paintEvent(self, event):
+        now = time.perf_counter()
+        dt = now - self.last_draw_time
+        self.last_draw_time = now
+        self.average_draw_time = 0.9 * self.average_draw_time + 0.1 * dt
+        self.window().setWindowTitle(f'{1 / self.average_draw_time:.1f} fps')
+        return super().paintEvent(event)

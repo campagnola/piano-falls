@@ -1,5 +1,5 @@
 import numpy as np
-from .qt import QtCore, QtGui, QtWidgets, RectItem, Color, Pen, GraphicsItemGroup
+from .qt import QtCore, QtGui, QtWidgets, Color, Pen, GraphicsItemGroup
 from . import qt
 from .keyboard import Keyboard
 
@@ -20,7 +20,6 @@ class NotesItem(GraphicsItemGroup):
 
     def set_track_colors(self, track_colors):
         self.track_colors = track_colors
-        print('track_colors:', track_colors)
         for note_item in self.notes:
             note_item.set_color(self.get_color(note_item.track_key))
 
@@ -55,7 +54,7 @@ class NotesItem(GraphicsItemGroup):
         return self._bounds
 
 
-class NoteItem(GraphicsItemGroup):
+class NoteItem(QtWidgets.QGraphicsRectItem):
     def __init__(self, x, y, w, h, color, z, note):
         self.note = note
         self.track_key = (note.part, note.staff)
@@ -66,20 +65,14 @@ class NoteItem(GraphicsItemGroup):
         self.grad.setColorAt(0, Color((255, 255, 255)))
         self.grad.setColorAt(np.clip(.05/h, 0, 1), color)
         self.grad.setColorAt(1, color * 0.5)
-        super().__init__()
 
-        self.rect = QtWidgets.QGraphicsRectItem(x, y, w, h)
-        self.addToGroup(self.rect)
-        self.rect.setBrush(self.grad)
-        self.rect.setPen(Pen((0, 0, 0, 208)))
+        QtWidgets.QGraphicsRectItem.__init__(self, x, y, w, h)
+        self.setBrush(self.grad)
+        self.setPen(Pen((0, 0, 0, 208)))
         self.setZValue(z)
 
-        # self.line = QtWidgets.QGraphicsLineItem(x, y, x+w, y)
-        # self.addToGroup(self.line)
-        # self.line.setPen(Pen((255, 255, 255)))
-
     def set_color(self, color):
-        self.grad.setColorAt(np.clip(.05/self.rect.rect().height(), 0, 1), Color(color))
+        self.grad.setColorAt(np.clip(.05/self.rect().height(), 0, 1), Color(color))
         self.grad.setColorAt(1, Color(color) * 0.5)
-        self.rect.setBrush(self.grad)
+        self.setBrush(self.grad)
         self.update()

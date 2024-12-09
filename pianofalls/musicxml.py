@@ -224,7 +224,7 @@ class MusicXMLParser:
         part_id = part_elem.attrib['id']
         part_info = self.part_info.get(part_id, {})
         part_info['id'] = part_id
-        part = Part(part_info, measures)        
+        part = MusicXMLPart(part_info, measures)        
         # each measure is a list of musical elements (notes, rests, changes, etc) having a start time
         # and optional duration in quarter notes relative to the measure beginning
 

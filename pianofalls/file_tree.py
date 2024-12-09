@@ -33,6 +33,7 @@ class FileTree(QtWidgets.QTreeWidget):
         item = FileTreeItem(path)
         self.addTopLevelItem(item)
         item.setExpanded(True)
+        self.resizeColumnToContents(0)
 
     def on_item_expanded(self, item):
         item.load_children()

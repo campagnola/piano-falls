@@ -9,6 +9,7 @@ from .midi import load_midi
 from .musicxml import load_musicxml
 from .file_tree import FileTree
 from .tracklist import TrackList
+from .config import config
 
 
 class MainWindow(QtWidgets.QWidget):
@@ -31,7 +32,7 @@ class MainWindow(QtWidgets.QWidget):
         self.splitter.addWidget(self.left_splitter)
 
         self.file_tree = FileTree()
-        self.file_tree.set_roots(['~/midi', '~/Downloads'])
+        self.file_tree.set_roots(config['search_paths'])
         self.left_splitter.addWidget(self.file_tree)
 
         self.track_list = TrackList()
@@ -46,7 +47,6 @@ class MainWindow(QtWidgets.QWidget):
 
         self.setLayout(self.layout)
 
-
         self.scroller.current_time_changed.connect(self.time_changed)
         self.ctrl_panel.speed_changed.connect(self.scroller.set_scroll_speed)
         self.ctrl_panel.zoom_changed.connect(self.view.waterfall.set_zoom)
@@ -55,8 +55,8 @@ class MainWindow(QtWidgets.QWidget):
         self.file_tree.file_double_clicked.connect(self.load)
 
         self.resize(1200, 800)
-        self.left_splitter.setSizes([600, 200])
-        self.splitter.setSizes([400, 800])
+        self.left_splitter.setSizes([700, 100])
+        self.splitter.setSizes([600, 600])
         self.show()
         self.view.focusWidget()
         self.overview.resizeEvent()

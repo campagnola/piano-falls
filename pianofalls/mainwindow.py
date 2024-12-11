@@ -13,6 +13,8 @@ from .config import config
 
 
 class MainWindow(QtWidgets.QWidget):
+    song_changed = QtCore.Signal(object)
+
     def __init__(self):
         super().__init__()
         self.last_filename = None
@@ -53,6 +55,8 @@ class MainWindow(QtWidgets.QWidget):
         self.view.wheel_event.connect(self.view_wheel_event)
         self.overview.clicked.connect(self.scroller.set_time)
         self.file_tree.file_double_clicked.connect(self.load)
+        self.track_list.colors_changed.connect(self.update_track_colors)
+        self.track_list.modes_changed.connect(self.update_track_modes)
 
         self.resize(1200, 800)
         self.left_splitter.setSizes([700, 100])
@@ -73,20 +77,21 @@ class MainWindow(QtWidgets.QWidget):
             song = load_musicxml(filename)
         else:
             raise ValueError(f'Unsupported file type: {filename}')
+        self.set_song(song, filename)
 
+    def set_song(self, song, filename):
         self.song = song
         
         # self.overview.set_song(song)
         self.view.set_song(song)
         self.scroller.set_song(song)
         self.track_list.set_song(song)
-        self.track_list.colors_changed.connect(self.update_track_colors)
-        self.track_list.modes_changed.connect(self.update_track_modes)
 
         self.window().setWindowTitle(filename)
         self.last_filename = filename
         self.update_track_colors()
         self.view.focusWidget()
+        self.song_changed.emit(song)
 
     def connect_midi_input(self, midi_input):
         self.view.connect_midi_input(midi_input)

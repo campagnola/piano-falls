@@ -12,7 +12,19 @@ class Keyboard(QtWidgets.QGraphicsWidget):
 
     @staticmethod
     def key_spec():
-        """Generate a list of dicts describing the shape and location of piano keys."""
+        """Generate a list of dicts describing the shape and location of piano keys::
+
+            {
+                x_pos: float,  # x position of the left edge of the key (total keyboard width is 88)
+                height: float,  # height of the key (1.0 for white keys, 0.6 for black keys)
+                width: float,  # width of the key (1.0 for white keys)
+                color: tuple,  # RGB color of the key
+                sub_index: int,  # index of the key within its group (0-6 for black keys, 0-11 for white keys)
+                is_black_key: bool,  # True if the key is a black key
+                key_id: int,  # integer 0-87 identifying the key
+            }
+        
+        """
         white_key_width = 88 / 52
         black_key_width = 88 * (7 / 52) / 12
         black_key_offset = 3.5 * white_key_width - 5.5 * black_key_width

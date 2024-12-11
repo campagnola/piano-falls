@@ -1,15 +1,10 @@
+import socket, threading, time, atexit
 import numpy as np
+import pyqtgraph as pg
 from .qt import QtGui, QtCore
 from .config import config
-
-
-import queue
-import socket, sys
-import threading
-import numpy as np
-import time
-
-
+from .keyboard import Keyboard
+from .song import Note
 
 
 def interpolate_frames(frame1, frame2, s, gamma=0.5):    
@@ -30,6 +25,8 @@ class FrameSender:
         self.thread = threading.Thread(target=self.run, daemon=True)
         self.thread.start()
 
+        atexit.register(self.close)
+
     def run(self):
         if self.udp:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -46,15 +43,12 @@ class FrameSender:
                 continue
             last_frame = frame
 
-            if self.udp:
-                frame = frame.tobytes()
-                sent = 0
-                max_size = 65507
-                while sent < len(frame):
-                    sock.sendto(frame[sent:sent+max_size], (self.host, self.port))
-                    sent += max_size
-            else:
-                sock.sendall(frame)
+            self._send_frame(sock, frame)
+
+        # send a blank frame before closing socket
+        rows, cols = config['rpi_display']['resolution']
+        self._send_frame(sock, np.zeros((rows, cols, 3), dtype='uint8'))
+        time.sleep(0.2)  # why is this necessary? without it, the last frame is not displayed
 
         sock.close()
 
@@ -64,8 +58,92 @@ class FrameSender:
     def close(self):
         self.stop = True
 
+    def _send_frame(self, sock, frame):
+        if self.udp:
+            frame = frame.tobytes()
+            sent = 0
+            max_size = 65507
+            while sent < len(frame):
+                sock.sendto(frame[sent:sent+max_size], (self.host, self.port))
+                sent += max_size
+        else:
+            sock.sendall(frame)
+
+
+
+
+class RPiRenderer:
+    def __init__(self, mainwindow, sender):
+        self.mainwindow = mainwindow
+        self.song = None
+        self.time_range = (0, 1)
+        self.sender = sender
+
+        mainwindow.song_changed.connect(self.set_song)
+        mainwindow.scroller.current_time_changed.connect(self.set_time)
+
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.update_frame)
+        self.timer.start(1000 // 30)
+
+    def set_song(self, song):
+        self.song = song
+
+    def set_time(self, time):
+        self.set_time_range((time, time + 3))
+
+    def set_time_range(self, time_range):
+        self.time_range = time_range
+
+    def render_frame(self, time_range):
+        track_colors = self.mainwindow.track_list.track_colors()
+        rows, cols = config['rpi_display']['resolution']
+        first_col, last_col = config['rpi_display']['bounds']
+        used_cols = last_col - first_col
+        all_keyspec = Keyboard.key_spec()
+        frame = np.zeros((rows, cols, 3), dtype='uint8')
+        
+        events = self.song.get_events_active_in_range(time_range)
+        row_scale = rows / (time_range[1] - time_range[0])  # pixels per second
+        col_scale = used_cols / 88  # pixels per white key
+
+        for event in events:
+            if not isinstance(event, Note):
+                continue
+            note = event
+            if note.duration == 0:
+                continue
+            try:
+                keyspec = all_keyspec[note.pitch.key]
+            except IndexError:
+                continue
+            color = track_colors.get(note.track, (100, 100, 100))
+            x1 = first_col + int(keyspec['x_pos'] * col_scale)
+            y1 = int(rows - (row_scale * (note.start_time - time_range[0])))
+            w = int(keyspec['width'] * col_scale)
+            h = int(note.duration * row_scale)
+            x2 = x1 + w
+            y2 = np.clip(y1 - h, 0, y1-1)
+            y1 = np.clip(y1, 0, rows-1)
+            frame[y2:y1, x1:x2] = (color.red(), color.green(), color.blue())
+            # print("   ", keyspec, note, x1, y1, x2, y2)
+
+        # print((frame>0).sum())
+        # print(frame.max(axis=0).max(axis=0))
+        # frame[0] = (255, 0, 0)
+        # frame[:, 0] = (0, 255, 0)
+        return frame
+    
+    def update_frame(self):
+        if self.song is None:
+            return
+        frame = self.render_frame(self.time_range)
+        self.sender.send_frame(frame)
+
 
 class GraphicsViewUpdateWatcher(QtCore.QObject):
+    """Every time a GraphicsView is repainted, emit a signal with the new frame.
+    """
     new_frame = QtCore.Signal(object)
 
     def __init__(self, view):

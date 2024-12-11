@@ -146,7 +146,7 @@ class WaitScrollMode(ScrollMode):
 
     def set_time(self, time):
         super().set_time(time)
-        self.next_note_index = self.song.index_at_time(time)
+        self.next_note_index = self.song.index_of_event_starting_at(time)
 
     def update(self, current_time, dt, scroll_speed):        
         # find how far we have played into the song

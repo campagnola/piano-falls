@@ -2,7 +2,7 @@ import sys
 from pianofalls.midi import MidiInput
 from pianofalls.qt import QtWidgets
 from pianofalls.mainwindow import MainWindow
-from pianofalls.rpi_display import GraphicsViewUpdateWatcher, FrameSender
+from pianofalls.rpi_display import GraphicsViewUpdateWatcher, FrameSender, RPiRenderer
 from pianofalls.config import config
 
 
@@ -33,10 +33,10 @@ if __name__ == '__main__':
 
     if config['rpi_display'] is not None:
         rpi = config['rpi_display']
-        watcher = GraphicsViewUpdateWatcher(w.view)
         sender = FrameSender(rpi['ip_address'], rpi['port'], udp=rpi.get('udp', False))
-        # sender = FrameSender('10.10.10.10', 1337, udp=False)
-        watcher.new_frame.connect(sender.send_frame)
+        renderer = RPiRenderer(w, sender)
+        # watcher = GraphicsViewUpdateWatcher(w.view)
+        # watcher.new_frame.connect(sender.send_frame)
 
     w.show()
 

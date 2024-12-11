@@ -11,7 +11,7 @@ class TrackList(QtWidgets.QWidget):
     Play modes are autoplay, follow, mute
     """
 
-    colors_changed = QtCore.Signal()
+    colors_changed = QtCore.Signal(object)
     modes_changed = QtCore.Signal()
 
     def __init__(self):

@@ -57,11 +57,11 @@ class Song:
         """Return the index of the first event that starts at or after the given time
         """
         inds = self._event_indices_at_time(time, self.start_time_lookup)
-        if inds:
-            return inds[0]
-        else:
-            return None
-    
+        for i in inds:
+            if self.events[i].start_time >= time:
+                return i
+        return None
+        
     def _event_indices_at_time(self, time, lookup):
         """Return the first 1-second bin of event indices that appear at or after the given time
         """

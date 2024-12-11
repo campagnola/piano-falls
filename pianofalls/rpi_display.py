@@ -7,9 +7,49 @@ from .keyboard import Keyboard
 from .song import Note
 
 
-def interpolate_frames(frame1, frame2, s, gamma=0.5):    
+def interpolate_frames(frame1, frame2, s, gamma=0.5):
+    """Interpolate between two frames using gamma correction
+    When s=0, the output is frame1; when s=1, the output is frame2"""
     interp = frame1 * (1 - s)**gamma + frame2 * s**gamma
     return np.clip(interp, 0, 255).astype('uint8')
+
+
+def draw_interpolated_line(frame, row, col1, col2, color, gamma=0.5):
+    irow = int(row)
+    row_fraction = row % 1
+    if 0 <= irow < frame.shape[0]:
+        frame[irow, col1:col2] = np.clip(frame[irow, col1:col2].astype('int16') + color * (1 - row_fraction)**gamma, 0, 255).astype('uint8')
+    if 0 <= irow + 1 < frame.shape[0]:
+        frame[irow+1, col1:col2] = np.clip(frame[irow+1, col1:col2].astype('int16') + color * row_fraction**gamma, 0, 255).astype('uint8')
+    return (irow, irow+1), (1-row_fraction, row_fraction)
+
+
+def draw_interpolated_box(frame, row1, row2, col1, col2, color, gamma=0.5):
+    """
+    Row1 and row2 are floats representing the top and bottom of the box to draw.
+    Example: 
+    row1 = 1.3, row2 = 3.7
+    [ 0 | 1 | 2 | 3 | 4 | 5 ]
+         ^row1     ^row2
+        ^start_row  ^end_row 
+    """
+    # decide how much box to draw in each pixel
+    start_row = int(row1)
+    end_row = int(row2) + 1
+    draw_amount = np.ones(end_row - start_row)
+    draw_amount[0] -= row1 - start_row
+    draw_amount[-1] -= end_row - row2
+    # draw first row
+    if 0 <= start_row < frame.shape[0]:
+        frame[start_row, col1:col2] = color * draw_amount[0]**gamma
+    # draw middle rows
+    if len(draw_amount) > 2:
+        r1 = np.clip(start_row + 1, 0, frame.shape[0])
+        r2 = np.clip(end_row - 1, 0, frame.shape[0])
+        frame[r1:r2, col1:col2] = color
+    # draw last row if needed
+    if len(draw_amount) > 1 and (0 <= end_row < frame.shape[0]):
+        frame[end_row-1, col1:col2] = color * draw_amount[-1]**gamma
 
 
 class FrameSender:
@@ -107,6 +147,9 @@ class RPiRenderer:
         row_scale = rows / (time_range[1] - time_range[0])  # pixels per second
         col_scale = used_cols / 88  # pixels per white key
 
+        # how many pixels have we moved to account for start of time range (float)
+        y_pixel_offset = time_range[0] * row_scale
+
         for event in events:
             if not isinstance(event, Note):
                 continue
@@ -118,20 +161,16 @@ class RPiRenderer:
             except IndexError:
                 continue
             color = track_colors.get(note.track, (100, 100, 100))
-            x1 = first_col + int(keyspec['x_pos'] * col_scale)
-            y1 = int(rows - (row_scale * (note.start_time - time_range[0])))
-            w = int(keyspec['width'] * col_scale)
-            h = int(note.duration * row_scale)
-            x2 = x1 + w
-            y2 = np.clip(y1 - h, 0, y1-1)
-            y1 = np.clip(y1, 0, rows-1)
-            frame[y2:y1, x1:x2] = (color.red(), color.green(), color.blue())
-            # print("   ", keyspec, note, x1, y1, x2, y2)
+            start_y_pixel = y_pixel_offset + (frame.shape[0]-1) - (row_scale * note.start_time)
+            stop_y_pixel = start_y_pixel - (row_scale * note.duration)
 
-        # print((frame>0).sum())
-        # print(frame.max(axis=0).max(axis=0))
-        # frame[0] = (255, 0, 0)
-        # frame[:, 0] = (0, 255, 0)
+            w = int(keyspec['width'] * col_scale)
+            x1 = first_col + int(keyspec['x_pos'] * col_scale)
+            x2 = x1 + w
+            draw_interpolated_box(frame, stop_y_pixel, start_y_pixel, x1, x2, np.array(color))
+            draw_interpolated_line(frame, start_y_pixel, x1, x2, np.array([255, 255, 255]))
+
+
         return frame
     
     def update_frame(self):

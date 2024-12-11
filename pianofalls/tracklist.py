@@ -41,8 +41,12 @@ class TrackList(QtWidgets.QWidget):
         self.track_items = {}
 
     def track_colors(self):
-        return {item.track: item.color_button.color() for item in self.track_items.values()}
-
+        colors = {}
+        for item in self.track_items.values():
+            qcolor = item.color_button.color()
+            colors[item.track] = (qcolor.red(), qcolor.green(), qcolor.blue())
+        return colors
+    
     def set_song(self, song):
         self.tree.clear()
         self.track_items = {}

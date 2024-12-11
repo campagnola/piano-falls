@@ -1,5 +1,68 @@
 import numpy as np
-from pianofalls.qt import QtGui, QtCore
+from .qt import QtGui, QtCore
+from .config import config
+
+
+import queue
+import socket, sys
+import threading
+import numpy as np
+import time
+
+
+
+
+def interpolate_frames(frame1, frame2, s, gamma=0.5):    
+    interp = frame1 * (1 - s)**gamma + frame2 * s**gamma
+    return np.clip(interp, 0, 255).astype('uint8')
+
+
+class FrameSender:
+    def __init__(self, host, port, udp=False):
+        
+        self.host = host
+        self.port = port
+        self.udp = udp
+
+        self.next_frame = None
+        self.stop = False
+
+        self.thread = threading.Thread(target=self.run, daemon=True)
+        self.thread.start()
+
+    def run(self):
+        if self.udp:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            # sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, data[0].nbytes + 10)
+        else:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect((self.host, self.port))
+
+        last_frame = None
+        while not self.stop:
+            frame = self.next_frame
+            if frame is last_frame:
+                time.sleep(0.003)
+                continue
+            last_frame = frame
+
+            if self.udp:
+                frame = frame.tobytes()
+                sent = 0
+                max_size = 65507
+                while sent < len(frame):
+                    sock.sendto(frame[sent:sent+max_size], (self.host, self.port))
+                    sent += max_size
+            else:
+                sock.sendall(frame)
+
+        sock.close()
+
+    def send_frame(self, frame):
+        self.next_frame = frame
+
+    def close(self):
+        self.stop = True
 
 
 class GraphicsViewUpdateWatcher(QtCore.QObject):
@@ -7,13 +70,11 @@ class GraphicsViewUpdateWatcher(QtCore.QObject):
 
     def __init__(self, view):
         super().__init__()
+        self.resolution = config['rpi_display']['resolution']
         self.view = view
         self.timer = QtCore.QTimer()
         # use qt event filter to detect when view is repainted
         view.viewport().installEventFilter(self)
-        # import pyqtgraph as pg
-        # self.v = pg.ImageView()
-        # self.v.show()
 
     def eventFilter(self, obj, event):
         try:
@@ -24,20 +85,22 @@ class GraphicsViewUpdateWatcher(QtCore.QObject):
         return False
     
     def emit_frame(self):
-        # import time
-        # start = time.time()
-        # frame = self.widget.grab().toImage()
-        # print(time.time() - start)
-        # array = ndarray_from_qimage(frame)[..., :3]
-        # self.new_frame.emit(array[:64, :512].copy())
+        img = self.render_frame_from_scene()
+        self.new_frame.emit(img)
 
+    def render_frame_from_screenshot(self):
+        rows, cols = self.resolution
+        frame = self.view.grab().toImage()
+        array = ndarray_from_qimage(frame)[..., :3]
+        return self.new_frame.emit(array[:rows, :cols].copy())
+
+    def render_frame_from_scene(self):
+        rows, cols = self.resolution
         source_rect = self.view.waterfall.sceneBoundingRect()
         source_rect.setLeft(-2)
         source_rect.setRight(source_rect.right() + 2)
-        source_rect.setTop(source_rect.bottom() - source_rect.width() * 64 / 512)
-        img = render_scene_to_rgb_bytes(self.view.scene, source_rect, 512, 64)
-        # self.v.setImage(img.transpose(1, 0, 2))
-        self.new_frame.emit(img)
+        source_rect.setTop(source_rect.bottom() - source_rect.width() * rows / cols)
+        return render_scene_to_rgb_bytes(self.view.scene, source_rect, cols, rows)
 
 
 def render_scene_to_rgb_bytes(scene, source_rect, width, height):
@@ -49,13 +112,6 @@ def render_scene_to_rgb_bytes(scene, source_rect, width, height):
     
     # Create a QPainter to paint on the QImage
     painter = QtGui.QPainter(image)
-
-    # # Calculate the scaling factor
-    # scale_x = width / source_rect.width()
-    # scale_y = height / source_rect.height()
-    
-    # # Apply the scaling transformation
-    # painter.scale(scale_x, scale_y)
 
     # Render the specified region of the scene into the QImage
     target_rect = QtCore.QRectF(0, 0, width, height)
@@ -107,3 +163,4 @@ def ndarray_from_qimage(qimg):
         shape = shape + (nchan,)
     arr = memory.view(dtype).reshape(shape)
     return arr.copy()
+

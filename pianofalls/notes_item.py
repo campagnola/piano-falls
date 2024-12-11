@@ -1,6 +1,5 @@
 import numpy as np
 from .qt import QtCore, QtGui, QtWidgets, Color, Pen, GraphicsItemGroup
-from . import qt
 from .keyboard import Keyboard
 
 
@@ -37,6 +36,8 @@ class NotesItem(GraphicsItemGroup):
         # Create new notes
         for i, note in enumerate(notes):
             if note.duration == 0:
+                continue
+            if note.pitch.key < 0 or note.pitch.key >= len(self.key_spec):
                 continue
             keyspec = self.key_spec[note.pitch.key]
             track_key = (note.part, note.staff)

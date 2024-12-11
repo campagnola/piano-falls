@@ -2,8 +2,7 @@ import sys
 from pianofalls.midi import MidiInput
 from pianofalls.qt import QtWidgets
 from pianofalls.mainwindow import MainWindow
-from pianofalls.screen_send import FrameSender
-from pianofalls.rpi_display import GraphicsViewUpdateWatcher
+from pianofalls.rpi_display import GraphicsViewUpdateWatcher, FrameSender
 from pianofalls.config import config
 
 

@@ -82,10 +82,10 @@ class Song:
     def get_events_active_in_range(self, time_range, filter=None):
         start_inds = self.indices_of_events_active_at(time_range[0])
         end_inds = self.indices_of_events_active_at(time_range[1])
-        if len(start_inds) == 0:
+        if len(start_inds) == 0 and len(end_inds) == 0:
             return []
-        
-        events = self.events[min(start_inds):max(end_inds)+1]
+
+        events = self.events[min(start_inds + end_inds):max(start_inds + end_inds)+1]
 
         if isinstance(filter, str):
             events = [e for e in events if type(e).__name__ == filter]

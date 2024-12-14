@@ -124,7 +124,7 @@ class RPiRenderer:
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_frame)
-        self.timer.start(1000 // 30)
+        self.timer.start(1000 // 55)
 
     def set_song(self, song):
         self.song = song

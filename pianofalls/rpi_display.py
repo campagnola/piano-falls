@@ -24,7 +24,7 @@ def draw_interpolated_line(frame, row, col1, col2, color, gamma=0.5):
     return (irow, irow+1), (1-row_fraction, row_fraction)
 
 
-def draw_interpolated_box(frame, row1, row2, col1, col2, color, gamma=0.5):
+def draw_interpolated_box(frame, row1, row2, col1, col2, colors, gamma=0.5):
     """
     Row1 and row2 are floats representing the top and bottom of the box to draw.
     Example: 
@@ -41,15 +41,18 @@ def draw_interpolated_box(frame, row1, row2, col1, col2, color, gamma=0.5):
     draw_amount[-1] -= end_row - row2
     # draw first row
     if 0 <= start_row < frame.shape[0]:
-        frame[start_row, col1:col2] = color * draw_amount[0]**gamma
+        frame[start_row, col1:col2] = colors[0] * draw_amount[0]**gamma
     # draw middle rows
     if len(draw_amount) > 2:
         r1 = np.clip(start_row + 1, 0, frame.shape[0])
         r2 = np.clip(end_row - 1, 0, frame.shape[0])
-        frame[r1:r2, col1:col2] = color
+        mid_rows = frame[r1:r2, col1:col2]
+        if mid_rows.shape[0] > 0:
+            color = np.linspace(colors[0], colors[1], mid_rows.shape[0]+1)[1:, np.newaxis, :]
+            mid_rows[:] = color
     # draw last row if needed
     if len(draw_amount) > 1 and (0 <= end_row < frame.shape[0]):
-        frame[end_row-1, col1:col2] = color * draw_amount[-1]**gamma
+        frame[end_row-1, col1:col2] = colors[1] * draw_amount[-1]**gamma
 
 
 class FrameSender:
@@ -167,7 +170,7 @@ class RPiRenderer:
             w = int(keyspec['width'] * col_scale)
             x1 = first_col + int(keyspec['x_pos'] * col_scale)
             x2 = x1 + w
-            draw_interpolated_box(frame, stop_y_pixel, start_y_pixel, x1, x2, np.array(color))
+            draw_interpolated_box(frame, stop_y_pixel, start_y_pixel, x1, x2, (np.array(color)*0.25, np.array(color)))
             draw_interpolated_line(frame, start_y_pixel, x1, x2, np.array([255, 255, 255]))
 
 

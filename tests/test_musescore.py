@@ -74,7 +74,7 @@ if __name__ == '__main__':
     mxl_file = sys.argv[1]
 
     parser = MusicXMLParser()
-    original_xml = parser.read_musicxml_file(mxl_file)
+    original_xml = parser.read_musicxml_file(mxl_file, add_line_numbers=True)
     n_measures = count_measures(original_xml)
     assert n_measures > 0, 'No measures found in the musicxml file'
     print(f'Found {n_measures} measures in {mxl_file}')

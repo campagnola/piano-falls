@@ -32,7 +32,7 @@ class MusicXMLParser:
         else:
             return tag
 
-    def read_musicxml_file(self, filename):
+    def read_musicxml_file(self, filename, add_line_numbers=False):
         if filename.lower().endswith('.mxl'):
             # It's a compressed MusicXML file
             with zipfile.ZipFile(filename, 'r') as zf:
@@ -47,8 +47,7 @@ class MusicXMLParser:
                         # Read the main score file
                         score_data = zf.read(full_path)
                         # parse such that we can keep track of line numbers
-                        root = read_xml_with_line_numbers(score_data)
-                        return root
+                        return read_xml_with_line_numbers(score_data, add_line_numbers=add_line_numbers)
                 except (KeyError, ET.ParseError):
                     # No container.xml or unable to parse it
                     pass
@@ -57,13 +56,12 @@ class MusicXMLParser:
                 for name in zf.namelist():
                     if (name.endswith('.xml') or name.endswith('.musicxml')) and '/' not in name:
                         score_data = zf.read(name)
-                        root = read_xml_with_line_numbers(score_data)
-                        return root
+                        return read_xml_with_line_numbers(score_data, add_line_numbers=add_line_numbers)
                 raise Exception('No MusicXML file found in the MXL archive.')
         else:
             # It's an uncompressed MusicXML file
-            score_data = open(filename, 'rb').read()
-            return read_xml_with_line_numbers(score_data)
+            score_data = open(filename, 'rb').read()            
+            return read_xml_with_line_numbers(score_data, add_line_numbers=add_line_numbers)
 
     def parse(self, filename):
         # Read the MusicXML file
@@ -355,15 +353,16 @@ class MusicXMLParser:
         duration_divisions = int(duration_elem.text) if duration_elem is not None else 0
 
         # Handle time-modification (e.g., tuplets)
-        time_mod_elem = note_elem.find(self.ns_tag('time-modification'))
-        if time_mod_elem is not None:
-            actual_notes_elem = time_mod_elem.find(self.ns_tag('actual-notes'))
-            normal_notes_elem = time_mod_elem.find(self.ns_tag('normal-notes'))
-            if actual_notes_elem is not None and normal_notes_elem is not None:
-                actual_notes = int(actual_notes_elem.text)
-                normal_notes = int(normal_notes_elem.text)
-                # Adjust duration_divisions
-                duration_divisions = duration_divisions * normal_notes / actual_notes
+        # NOPE - even when a tuplet is specified, the duration should still be correct
+        # time_mod_elem = note_elem.find(self.ns_tag('time-modification'))
+        # if time_mod_elem is not None:
+        #     actual_notes_elem = time_mod_elem.find(self.ns_tag('actual-notes'))
+        #     normal_notes_elem = time_mod_elem.find(self.ns_tag('normal-notes'))
+        #     if actual_notes_elem is not None and normal_notes_elem is not None:
+        #         actual_notes = int(actual_notes_elem.text)
+        #         normal_notes = int(normal_notes_elem.text)
+        #         # Adjust duration_divisions
+        #         duration_divisions = duration_divisions * normal_notes / actual_notes
 
         # Handle grace notes
         grace_elem = note_elem.find(self.ns_tag('grace'))
@@ -528,11 +527,12 @@ class XmlLineReader:
         except:
             return None
         
-def read_xml_with_line_numbers(xml_str):
+def read_xml_with_line_numbers(xml_str, add_line_numbers=False):
     source = XmlLineReader(xml_str)
     iter = ET.iterparse(source, ("start",))
     for _, elem in iter:
-        elem.set("xml_lineno", str(source.line))
+        if add_line_numbers:
+            elem.set("xml_lineno", str(source.line + 1))
     return iter.root
 
 

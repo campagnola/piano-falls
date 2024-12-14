@@ -98,7 +98,7 @@ class Barline(Event):
 
 
 class VoiceEvent(Event):
-    repr_keys = Event.repr_keys + ['track', 'staff', 'voice', 'is_chord']
+    repr_keys = Event.repr_keys + ['staff', 'voice', 'is_chord']
     def __init__(self, duration=None, start_time=None, 
                  staff=1, voice=1, is_chord=False, **kwds):
         self.voice = voice

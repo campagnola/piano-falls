@@ -11,7 +11,9 @@ else:
 default_config = {
     "search_paths": ["~/Downloads"],
     "songs": [],
-    "rpi_display": None,
+    "rpi_display": None,  
+        # {"ip_address": "10.10.10.10", "port": 1337, "udp": False, 
+        #  "resolution": [64, 512], "bounds": [10, 501]},
 }
 
 default_song_config = {

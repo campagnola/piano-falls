@@ -582,8 +582,7 @@ class MusicXMLPart(Part):
         # annotate all events with part info
         for measure in self.measures:
             for event in measure:
-                event.track_n = self.info['id']
-                event.track = self.info['name']
+                event.part = self
 
     def __repr__(self):
         return f"<Part {self.info['id']}: {self.name}>"

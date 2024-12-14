@@ -1,3 +1,5 @@
+import numpy as np
+
 
 class Song:
     """Encapsulates a sequence of events in a song (notes, bars, lyrics, etc.)
@@ -24,29 +26,73 @@ class Song:
         self.notes.sort(key=lambda n: (n.start_time, n.pitch.midi_note))
         self.events.sort(key=lambda e: e.start_time)
 
-        # Lookup table for quickly finding the note at a given time
-        self.time_lookup = {}
-        last = -1
-        for i,note in enumerate(self.notes):
-            t = int(note.start_time)
-            if t not in self.time_lookup:
-                for j in range(last+1, t+1):
-                    self.time_lookup[j] = i
-                last = t
+        # Lookup table for quickly finding notes starting or playing at a given time
+        # self.start_time_lookup = {}
+        # self.playing_time_lookup = {}
+        # last_start = -1
+        # last_stop = -1
+        # for i,event in enumerate(self.events):
+        #     t = int(event.start_time)
+        #     if t not in self.start_time_lookup:
+        #         for j in range(last_start+1, t+1):
+        #             self.start_time_lookup[j] = i
+        #         last_start = t
+        #     t = int(event.start_time + event.duration)
+        #     if t not in self.stop_time_lookup:
+        #         for j in range(last_stop+1, t+1):
+        #             self.stop_time_lookup[j] = i
+        #         last_stop = t
+        song_duration = max(e.start_time + e.duration for e in self.events)
+        self.start_time_lookup = [[] for _ in range(int(song_duration)+1)]
+        self.playing_time_lookup = [[] for _ in range(int(song_duration)+1)]
+        for i,event in enumerate(self.events):
+            self.start_time_lookup[int(event.start_time)].append(i)
+            for j in range(int(event.start_time), int(np.ceil(event.start_time + event.duration))):
+                self.playing_time_lookup[j].append(i)
 
     def __len__(self):
         return len(self.notes)
     
-    def index_at_time(self, time):
-        """Return the index of the first note at or after the given time"""
+    def index_of_event_starting_at(self, time):
+        """Return the index of the first event that starts at or after the given time
+        """
+        inds = self._event_indices_at_time(time, self.start_time_lookup)
+        for i in inds:
+            if self.events[i].start_time >= time:
+                return i
+        return None
+        
+    def _event_indices_at_time(self, time, lookup):
+        """Return the first 1-second bin of event indices that appear at or after the given time
+        """
         time = max(0, time)
-        closest_index = self.time_lookup.get(int(time), None)
-        if closest_index is None:
-            return None
-        while True:
-            if self.notes[closest_index].start_time >= time:
-                return closest_index
-            closest_index += 1
+        lookup_index = int(time)
+        while lookup_index < len(lookup):
+            if lookup[lookup_index]:
+                return lookup[lookup_index]
+            lookup_index += 1
+        return []
+
+    def indices_of_events_active_at(self, time):
+        """Return indices of events that are active in the first 1-second bin at or after the given time
+        """
+        inds = self._event_indices_at_time(time, self.playing_time_lookup)
+        return inds
+
+    def get_events_active_in_range(self, time_range, filter=None):
+        start_inds = self.indices_of_events_active_at(time_range[0])
+        end_inds = self.indices_of_events_active_at(time_range[1])
+        if len(start_inds) == 0:
+            return []
+        
+        events = self.events[min(start_inds):max(end_inds)+1]
+
+        if isinstance(filter, str):
+            events = [e for e in events if type(e).__name__ == filter]
+        elif filter is not None:
+            events = [e for e in events if isinstance(e, filter)]
+        
+        return events
 
     @property
     def tracks(self):
@@ -105,6 +151,10 @@ class VoiceEvent(Event):
         self.is_chord = is_chord
         self.staff = staff
         super().__init__(start_time=start_time, duration=duration, **kwds)
+
+    @property
+    def track(self):
+        return (self.part, self.staff)
 
 
 class Note(VoiceEvent):

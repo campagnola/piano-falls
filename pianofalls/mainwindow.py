@@ -73,7 +73,7 @@ class MainWindow(QtWidgets.QWidget):
             return        
         elif ext in ['.mid', '.midi']:
             song = load_midi(filename)
-        elif ext in ['.xml', '.mxl']:
+        elif ext in ['.xml', '.mxl', '.musicxml']:
             song = load_musicxml(filename)
         else:
             raise ValueError(f'Unsupported file type: {filename}')

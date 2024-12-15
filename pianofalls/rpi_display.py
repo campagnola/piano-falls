@@ -171,7 +171,8 @@ class RPiRenderer:
             x1 = first_col + int(keyspec['x_pos'] * col_scale)
             x2 = x1 + w
             draw_interpolated_box(frame, stop_y_pixel, start_y_pixel, x1, x2, (np.array(color)*0.25, np.array(color)))
-            draw_interpolated_line(frame, start_y_pixel, x1, x2, np.array([255, 255, 255]))
+            if not event.played:
+                draw_interpolated_line(frame, start_y_pixel, x1, x2, np.array([255, 255, 255]))
 
 
         return frame

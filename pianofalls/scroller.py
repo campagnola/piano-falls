@@ -18,7 +18,6 @@ class TimeScroller(QtCore.QObject):
         self.scroll_speed = 1.0 # how quickly to scroll in song seconds per real second
         self.scrolling = False
         self.scroll_mode = None
-        self.midi_queue = queue.Queue()
 
         self.set_scroll_mode('wait')
 
@@ -47,7 +46,7 @@ class TimeScroller(QtCore.QObject):
             'tempo': TempoScrollMode,
             'wait': WaitScrollMode,
             'follow': FollowScrollMode,
-        }[mode](self.song, self.midi_queue)
+        }[mode](self.song)
 
     def set_time(self, time):
         self.current_time = time
@@ -65,8 +64,7 @@ class TimeScroller(QtCore.QObject):
         midi_input.message.connect(self.on_midi_message)
 
     def on_midi_message(self, midi_input, msg):
-        if msg.type in ['note_on', 'note_off']:
-            self.midi_queue.put(msg)
+        self.scroll_mode.on_midi_message(msg)
 
     def auto_scroll_loop(self):
         last_time = time.perf_counter()
@@ -101,10 +99,13 @@ class TimeScroller(QtCore.QObject):
 
 
 class ScrollMode:
-    def __init__(self, song=None, midi_queue=None):
+    def __init__(self, song=None):
         self.set_song(song)
-        self.midi_queue = midi_queue
-        self.recent_midi = []
+        self.incoming_midi = []
+
+    def on_midi_message(self, msg):
+        if msg.type in ['note_on', 'note_off']:
+            self.incoming_midi.append(msg)
 
     def set_song(self, song):
         self.song = song
@@ -114,17 +115,16 @@ class ScrollMode:
         pass
 
     def check_midi(self):
-        # collect latest midi messages from queue
-        while not self.midi_queue.empty():
-            msg = self.midi_queue.get()
-            self.recent_midi.append(msg)
-
-        # discard messages older than 5 seconds
-        now = time.perf_counter()
-        self.recent_midi = [msg for msg in self.recent_midi if msg.perf_counter > now - 5]
+        """Return all midi messages received since the last call"""
+        messages = self.incoming_midi
+        self.incoming_midi = []
+        return messages
 
     def update(self, current_time, dt, scroll_speed):
-        pass
+        """Called periodically to update the current time
+        
+        Returns the new current time"""
+        raise NotImplementedError()
 
 
 class TempoScrollMode(ScrollMode):
@@ -143,26 +143,47 @@ class WaitScrollMode(ScrollMode):
     def set_song(self, song):
         super().set_song(song)
         self.next_note_index = 0
+        if song is None:
+            return
+        # mark all notes as unplayed
+        for note in self.song.notes:
+            note.played = False
 
     def set_time(self, time):
         super().set_time(time)
         self.next_note_index = self.song.index_of_event_starting_at(time)
+        # mark next event + all following events as unplayed
+        for note in self.song.notes[self.next_note_index:]:
+            note.played = False
 
     def update(self, current_time, dt, scroll_speed):        
-        # find how far we have played into the song
-        self.check_midi()
-        recent_keys = {msg.note:msg for msg in self.recent_midi if msg.type == 'note_on'}
+        # check for recent midi input
+        recent_messages = self.check_midi()
+        recent_presses = [msg for msg in recent_messages if msg.type == 'note_on']
+
         if self.next_note_index is None:
             return current_time
-        while self.next_note_index < len(self.song):
-            next_note = self.song.notes[self.next_note_index]
-            if next_note.start_time > current_time + self.early_key_time:
-                break
-            if next_note.pitch.midi_note in recent_keys:
-                self.next_note_index += 1
-                self.recent_midi.remove(recent_keys[next_note.pitch.midi_note])
-                recent_keys.pop(next_note.pitch.midi_note)
-            else:
+
+        # check if any recent key presses match the next note
+        for msg in recent_presses:
+            matched_time = None
+            for note in self.song.notes[self.next_note_index:]:
+                if note.start_time > current_time + self.early_key_time:
+                    # too early to count any key presses toward the next note
+                    break
+                if note.played:
+                    continue
+                if note.pitch.midi_note == msg.note:
+                    # a key press matches an upcoming next note. It only counts if it's the first key press for this note
+                    # or if the note is being played at the same time as another that already accepted this key press
+                    if matched_time is None or matched_time == note.start_time:
+                        note.played = True
+                        matched_time = note.start_time
+
+        # check if we can advance to the next note
+        for i in range(self.next_note_index, len(self.song)):
+            if not self.song.notes[i].played:
+                self.next_note_index = i
                 break
 
         if self.next_note_index >= len(self.song):

@@ -1,4 +1,5 @@
 import socket, threading, time, atexit
+import numba
 import numpy as np
 import pyqtgraph as pg
 from .qt import QtGui, QtCore
@@ -14,6 +15,7 @@ def interpolate_frames(frame1, frame2, s, gamma=0.5):
     return np.clip(interp, 0, 255).astype('uint8')
 
 
+@numba.jit(nopython=True)
 def draw_interpolated_line(frame, row, col1, col2, color, gamma=0.5):
     irow = int(row)
     row_fraction = row % 1
@@ -24,35 +26,29 @@ def draw_interpolated_line(frame, row, col1, col2, color, gamma=0.5):
     return (irow, irow+1), (1-row_fraction, row_fraction)
 
 
-def draw_interpolated_box(frame, row1, row2, col1, col2, colors, gamma=0.5):
+@numba.jit(nopython=True)
+def draw_interpolated_box(frame, y1, y2, col1, col2, colors, gamma=0.5):
     """
     Row1 and row2 are floats representing the top and bottom of the box to draw.
     Example: 
     row1 = 1.3, row2 = 3.7
     [ 0 | 1 | 2 | 3 | 4 | 5 ]
-         ^row1     ^row2
+         ^y1       ^y2
         ^start_row  ^end_row 
     """
-    # decide how much box to draw in each pixel
-    start_row = int(row1)
-    end_row = int(row2) + 1
-    draw_amount = np.ones(end_row - start_row)
-    draw_amount[0] -= row1 - start_row
-    draw_amount[-1] -= end_row - row2
-    # draw first row
-    if 0 <= start_row < frame.shape[0]:
-        frame[start_row, col1:col2] = colors[0] * draw_amount[0]**gamma
-    # draw middle rows
-    if len(draw_amount) > 2:
-        r1 = np.clip(start_row + 1, 0, frame.shape[0])
-        r2 = np.clip(end_row - 1, 0, frame.shape[0])
-        mid_rows = frame[r1:r2, col1:col2]
-        if mid_rows.shape[0] > 0:
-            color = np.linspace(colors[0], colors[1], mid_rows.shape[0]+1)[1:, np.newaxis, :]
-            mid_rows[:] = color
-    # draw last row if needed
-    if len(draw_amount) > 1 and (0 <= end_row < frame.shape[0]):
-        frame[end_row-1, col1:col2] = colors[1] * draw_amount[-1]**gamma
+    for row in range(int(y1), int(y2)+1):
+        if row < 0 or row >= frame.shape[0]:
+            continue
+        draw_amount = 1
+        if row <= y1:
+            draw_amount -= y1 - row
+        if y2 < row + 1:
+            draw_amount -= (row + 1) - y2
+        if draw_amount <= 0:
+            continue
+        frac_across = max(0.0, min(1.0, (row - y1) / (y2 - y1)))
+        color = colors[0] * (1 - frac_across) + colors[1] * frac_across
+        frame[row, col1:col2] = color * draw_amount**gamma
 
 
 class FrameSender:
@@ -173,6 +169,8 @@ class RPiRenderer:
             draw_interpolated_box(frame, stop_y_pixel, start_y_pixel, x1, x2, (np.array(color)*0.25, np.array(color)))
             if not event.played:
                 draw_interpolated_line(frame, start_y_pixel, x1, x2, np.array([255, 255, 255]))
+            else:
+                draw_interpolated_line(frame, start_y_pixel, x1, x2, np.array(color))
 
 
         return frame

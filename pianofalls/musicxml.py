@@ -5,9 +5,9 @@ from .song import (Song, Pitch, Note, Rest, Event, Barline, Part,
                    TempoChange, KeySignatureChange, TimeSignatureChange)
 
 
-def load_musicxml(filename):
+def load_musicxml(filename, add_line_numbers=False):
     parser = MusicXMLParser()
-    return parser.parse(filename)
+    return parser.parse(filename, add_line_numbers=add_line_numbers)
 
 
 class MusicXMLParser:
@@ -63,9 +63,9 @@ class MusicXMLParser:
             score_data = open(filename, 'rb').read()            
             return read_xml_with_line_numbers(score_data, add_line_numbers=add_line_numbers)
 
-    def parse(self, filename):
+    def parse(self, filename, add_line_numbers=False):
         # Read the MusicXML file
-        root = self.read_musicxml_file(filename)
+        root = self.read_musicxml_file(filename, add_line_numbers=add_line_numbers)
         
         # Namespace handling
         if root.tag.startswith('{'):
@@ -188,7 +188,10 @@ class MusicXMLParser:
                 merged_notes.append(ev)
             # Handle tie start/stop
             if 'stop' in ev.tie_types:
-                del tied_notes[tie_key]
+                try:
+                    del tied_notes[tie_key]
+                except KeyError:
+                    print(f"Warning: Tie stop event without corresponding start event: {ev}")
             if 'start' in ev.tie_types:  # note can be both a stop and start!
                 tied_notes[tie_key] = ev
 
@@ -469,6 +472,7 @@ class MusicXMLParser:
                 tie_types=tie_types,
                 is_chord=is_chord,
                 note_type=note_type,
+                line_number=note_elem.attrib.get('xml_lineno', None),
             )
 
 

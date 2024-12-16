@@ -107,16 +107,19 @@ class Song:
 
 class Event:
     repr_keys = ['start_time', 'duration', 'part']
-    def __init__(self, start_time, duration=0, part=None, **kwds):
+    def __init__(self, start_time, duration=0, part=None, line_number=None, **kwds):
         self.start_time = start_time
         self.duration = duration
         self.part = part
+        self.line_number = line_number
         for k,v in kwds.items():
             setattr(self, k, v)
 
     def __repr__(self):
         vals = {k:getattr(self, k) for k in self.repr_keys}
         val_str = " ".join(f"{k}={v}" for k,v in vals.items())
+        if self.line_number is not None:
+            val_str += f' line={self.line_number}'
         return f'<{self.__class__.__name__} {val_str}>'
 
 

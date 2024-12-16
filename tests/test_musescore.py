@@ -104,7 +104,7 @@ if __name__ == '__main__':
                 break
 
             # parse the original song
-            song_from_mxl = load_musicxml(temp_mxl_path)
+            song_from_mxl = load_musicxml(temp_mxl_path, add_line_numbers=False)
             song_from_mid = load_midi(temp_mid_path)
 
             # compare files

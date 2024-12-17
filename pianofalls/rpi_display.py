@@ -148,6 +148,8 @@ class RPiRenderer:
         # how many pixels have we moved to account for start of time range (float)
         y_pixel_offset = time_range[0] * row_scale
 
+        # print("==========================")
+
         for event in events:
             if not isinstance(event, Note):
                 continue
@@ -159,17 +161,16 @@ class RPiRenderer:
             except IndexError:
                 continue
             color = track_colors.get(note.track, (100, 100, 100))
-            start_y_pixel = y_pixel_offset + (frame.shape[0]-1) - (row_scale * note.start_time)
+            start_y_pixel = y_pixel_offset + frame.shape[0] - (row_scale * note.start_time)
             stop_y_pixel = start_y_pixel - (row_scale * note.duration)
 
             w = int(keyspec['width'] * col_scale)
             x1 = first_col + int(keyspec['x_pos'] * col_scale)
             x2 = x1 + w
+            # print(note, start_y_pixel, stop_y_pixel)
             draw_interpolated_box(frame, stop_y_pixel, start_y_pixel, x1, x2, (np.array(color)*0.25, np.array(color)))
             if not event.played:
-                draw_interpolated_line(frame, start_y_pixel, x1, x2, np.array([255, 255, 255]))
-            else:
-                draw_interpolated_line(frame, start_y_pixel, x1, x2, np.array(color))
+                draw_interpolated_line(frame, start_y_pixel-1, x1, x2, np.array([255, 255, 255]))
 
         return frame
     

@@ -286,7 +286,11 @@ class MusicXMLParser:
                         current_quarters -= duration_quarters
                     elif tag == "forward":
                         current_quarters += duration_quarters
-            
+
+            elif tag in ("print", "harmony"):
+                # ignore these tags for now (we should handle chord names eventually)
+                pass
+
             else:
                 print(f"Warning: Ignoring unsupported element inside measure: {tag}")
 

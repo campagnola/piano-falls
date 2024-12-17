@@ -121,9 +121,8 @@ class RPiRenderer:
         mainwindow.song_changed.connect(self.set_song)
         mainwindow.scroller.current_time_changed.connect(self.set_time)
 
-        self.timer = QtCore.QTimer()
-        self.timer.timeout.connect(self.update_frame)
-        self.timer.start(1000 // 55)
+        self.render_thread = threading.Thread(target=self.render_loop, daemon=True)
+        self.render_thread.start()
 
     def set_song(self, song):
         self.song = song
@@ -172,8 +171,17 @@ class RPiRenderer:
             else:
                 draw_interpolated_line(frame, start_y_pixel, x1, x2, np.array(color))
 
-
         return frame
+    
+    def render_loop(self):
+        last_time = time.perf_counter()
+        while True:
+            start_time = time.perf_counter()
+            dt = start_time - last_time
+            sleep_time = max(0, 1/60 - dt)
+            time.sleep(sleep_time)
+            last_time = time.perf_counter()
+            self.update_frame()
     
     def update_frame(self):
         if self.song is None:

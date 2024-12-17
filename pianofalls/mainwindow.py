@@ -82,7 +82,7 @@ class MainWindow(QtWidgets.QWidget):
     def set_song(self, song, filename):
         self.song = song
         
-        # self.overview.set_song(song)
+        self.overview.set_song(song)
         self.view.set_song(song)
         self.scroller.set_song(song)
         self.track_list.set_song(song)

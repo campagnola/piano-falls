@@ -11,6 +11,7 @@ class Song:
         # keys are: start_time, pitch, duration, track, track_n, on_msg, off_msg
         self.notes = []
         self.events = []
+        self._end_time = None
         for i, src_event in enumerate(events):
             if isinstance(src_event, dict):
                 src_event = Note(**src_event)
@@ -27,21 +28,6 @@ class Song:
         self.events.sort(key=lambda e: e.start_time)
 
         # Lookup table for quickly finding notes starting or playing at a given time
-        # self.start_time_lookup = {}
-        # self.playing_time_lookup = {}
-        # last_start = -1
-        # last_stop = -1
-        # for i,event in enumerate(self.events):
-        #     t = int(event.start_time)
-        #     if t not in self.start_time_lookup:
-        #         for j in range(last_start+1, t+1):
-        #             self.start_time_lookup[j] = i
-        #         last_start = t
-        #     t = int(event.start_time + event.duration)
-        #     if t not in self.stop_time_lookup:
-        #         for j in range(last_stop+1, t+1):
-        #             self.stop_time_lookup[j] = i
-        #         last_stop = t
         song_duration = max(e.start_time + e.duration for e in self.events)
         self.start_time_lookup = [[] for _ in range(int(song_duration)+1)]
         self.playing_time_lookup = [[] for _ in range(int(song_duration)+1)]
@@ -50,6 +36,8 @@ class Song:
             for j in range(int(event.start_time), int(np.ceil(event.start_time + event.duration))):
                 self.playing_time_lookup[j].append(i)
 
+        self.note_start_times = np.array([n.start_time for n in self.notes])
+
     def __len__(self):
         return len(self.notes)
     
@@ -57,10 +45,18 @@ class Song:
         """Return the index of the first event that starts at or after the given time
         """
         inds = self._event_indices_at_time(time, self.start_time_lookup)
-        for i in inds:
+        for i in range(inds[0], len(self.events)):
             if self.events[i].start_time >= time:
                 return i
         return None
+        
+    def index_of_note_starting_at(self, time):
+        """Return the index of the first note that starts at or after the given time
+        """
+        ind = np.searchsorted(self.note_start_times, time)
+        if ind >= len(self.notes):
+            return None
+        return ind
         
     def _event_indices_at_time(self, time, lookup):
         """Return the first 1-second bin of event indices that appear at or after the given time
@@ -103,6 +99,12 @@ class Song:
             self._tracks = set([(getattr(e, 'part', None), getattr(e, 'staff', None)) for e in self.events])
             
         return self._tracks
+
+    @property
+    def end_time(self):
+        if self._end_time is None:
+            self._end_time = max(e.start_time + e.duration for e in self.events)
+        return self._end_time
 
 
 class Event:

@@ -151,10 +151,10 @@ class WaitScrollMode(ScrollMode):
 
     def set_time(self, time):
         super().set_time(time)
-        self.next_note_index = self.song.index_of_event_starting_at(time)
+        self.next_note_index = self.song.index_of_note_starting_at(time)
         # mark next event + all following events as unplayed
-        for note in self.song.notes[self.next_note_index:]:
-            note.played = False
+        for i, note in enumerate(self.song.notes):
+            note.played = i < self.next_note_index
 
     def update(self, current_time, dt, scroll_speed):        
         # check for recent midi input
@@ -182,12 +182,13 @@ class WaitScrollMode(ScrollMode):
 
         # check if we can advance to the next note
         for i in range(self.next_note_index, len(self.song)):
-            if not self.song.notes[i].played:
-                self.next_note_index = i
+            if self.song.notes[i].played:
+                self.next_note_index = i + 1
+            else:
                 break
 
         if self.next_note_index >= len(self.song):
-            max_time = self.song.notes[-1].start_time + self.song.notes[-1].duration
+            max_time = self.song.end_time
         else:
             max_time = self.song.notes[self.next_note_index].start_time
         

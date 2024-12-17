@@ -144,6 +144,7 @@ class TimeSignatureChange(Event):
         self.denominator = denominator
         super().__init__(start_time=start_time, **kwds)
 
+
 class Barline(Event):
     pass
 

@@ -5,7 +5,7 @@ import pyqtgraph as pg
 from .qt import QtGui, QtCore
 from .config import config
 from .keyboard import Keyboard
-from .song import Note
+from .song import Note, Barline
 
 
 def interpolate_frames(frame1, frame2, s, gamma=0.5):
@@ -48,7 +48,11 @@ def draw_interpolated_box(frame, y1, y2, col1, col2, colors, gamma=0.5):
             continue
         frac_across = max(0.0, min(1.0, (row - y1) / (y2 - y1)))
         color = colors[0] * (1 - frac_across) + colors[1] * frac_across
-        frame[row, col1:col2] = color * draw_amount**gamma
+        draw_row = frame[row, col1:col2]
+        applied_color = (color * draw_amount**gamma)
+        for i in range(draw_row.shape[0]):
+            for j in range(draw_row.shape[1]):
+                draw_row[i, j] = min(255, max(0, draw_row[i, j] + applied_color[j]))
 
 
 class FrameSender:
@@ -151,6 +155,11 @@ class RPiRenderer:
         # print("==========================")
 
         for event in events:
+            if isinstance(event, Barline):
+                start_y_pixel = y_pixel_offset + frame.shape[0] - (row_scale * event.start_time)
+                draw_interpolated_line(frame, start_y_pixel-1, 0, frame.shape[1], np.array([4, 4, 4]))
+
+        for event in events:        
             if not isinstance(event, Note):
                 continue
             note = event

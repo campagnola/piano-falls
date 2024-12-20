@@ -119,6 +119,8 @@ class RPiRenderer:
     def __init__(self, mainwindow, sender):
         self.mainwindow = mainwindow
         self.song = None
+        self.current_time = 0
+        self.zoom = 1
         self.time_range = (0, 1)
         self.sender = sender
 
@@ -132,7 +134,12 @@ class RPiRenderer:
         self.song = song
 
     def set_time(self, time):
-        self.set_time_range((time, time + 3))
+        self.current_time = time
+        self.set_time_range((time, time + 3 / self.zoom))
+
+    def set_zoom(self, zoom):
+        self.zoom = zoom
+        self.set_time(self.current_time)
 
     def set_time_range(self, time_range):
         self.time_range = time_range

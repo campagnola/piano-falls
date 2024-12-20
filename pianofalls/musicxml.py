@@ -178,20 +178,19 @@ class MusicXMLParser:
             if not isinstance(ev, Note):
                 merged_notes.append(ev)
                 continue
-            tie_key = (ev.part, ev.voice, ev.pitch.midi_note)
-            if tie_key in tied_notes:
-                # This note is tied to a previous note; extend the duration of the previous note
-                # and skip adding this note to the list
-                tied_note = tied_notes[tie_key]
-                tied_note.duration = ev.start_time + ev.duration - tied_note.start_time
-            else:
-                merged_notes.append(ev)
+            tie_key = (ev.part, ev.staff, ev.pitch.midi_note)
             # Handle tie start/stop
             if 'stop' in ev.tie_types:
                 try:
-                    del tied_notes[tie_key]
+                    # This note is tied to a previous note; extend the duration of the previous note
+                    # and skip adding this note to the list
+                    tied_note = tied_notes.pop(tie_key)
+                    tied_note.duration = ev.start_time + ev.duration - tied_note.start_time
                 except KeyError:
                     print(f"Warning: Tie stop event without corresponding start event: {ev}")
+            else:
+                merged_notes.append(ev)
+
             if 'start' in ev.tie_types:  # note can be both a stop and start!
                 tied_notes[tie_key] = ev
 
@@ -245,6 +244,8 @@ class MusicXMLParser:
         - notes: List of Note instances.
         - measure_duration: Duration of the measure in seconds.
         """
+        measure_number = int(measure_elem.attrib['number'])
+
         items = []
 
         # Track time for this measure in quarters since divisions and tempo may change at any time
@@ -268,8 +269,12 @@ class MusicXMLParser:
 
             elif tag == "note":
                 item = self.parse_note_element(elem)
+                item.measure_number = measure_number
                 item.start_quarters = current_quarters
+                item.repr_keys = item.repr_keys.copy()
+                item.repr_keys.extend(['start_quarters', 'duration_quarters', 'measure_number'])
                 items.append(item)
+
                 # advance clock unless this is a chord note
                 if not item.is_chord:
                     last_non_chord_note = item
@@ -277,6 +282,9 @@ class MusicXMLParser:
                 else:
                     # if this is a chord note, set the start time to the last non-chord note
                     item.start_quarters = last_non_chord_note.start_quarters
+
+                if elem.attrib.get('debug', None)is not None:
+                    item.debug = True
 
             elif tag in ("backup", "forward"):
                 duration_elem = elem.find(self.ns_tag('duration'))
@@ -294,7 +302,6 @@ class MusicXMLParser:
             else:
                 print(f"Warning: Ignoring unsupported element inside measure: {tag}")
 
-        measure_number = int(measure_elem.attrib['number'])
         measure = Measure(measure_number, events=items)
         for item in items:
             item.measure = measure

@@ -50,7 +50,8 @@ def compare_songs(song1, song2, names):
         if differences:
             diffs = "\n  ".join(differences)
             print(f'Note {i} differences:\n  {diffs}')
-            print(f'   {note1} vs {note2}')
+            print(f'   mxl: {note1}')
+            print(f'   mid: {note2}')
             xmlstr = ET.tostring(note1.xml)
             # replace all "> " with ">\n "
             xmlstr = xmlstr.replace(b'> ', b'>\n ')
@@ -67,11 +68,15 @@ def compare_songs(song1, song2, names):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print('Usage: python test_parser.py <path_to_mxl_file>')
+    if len(sys.argv) < 2:
+        print('Usage: python test_parser.py <path_to_mxl_file> [starting_measure]')
         sys.exit(1)
 
     mxl_file = sys.argv[1]
+    if len(sys.argv) > 2:
+        starting_n_measures = int(sys.argv[2])
+    else:
+        starting_n_measures = 1
 
     parser = MusicXMLParser()
     original_xml = parser.read_musicxml_file(mxl_file, add_line_numbers=True)
@@ -82,7 +87,7 @@ if __name__ == '__main__':
     temp_dir = tempfile.mkdtemp()
     try:
         difference_found = False
-        for i in range(1, n_measures):
+        for i in range(starting_n_measures, n_measures):
             print(f'Checking {i} measures...')
             short_xml = extract_measures(original_xml, i)
 

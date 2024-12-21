@@ -140,6 +140,8 @@ class MusicXMLParser:
                 events.extend(measure.events)
             # for events with nonzero duration, also add a stop event
             for ev in events:
+                if getattr(ev, 'debug', False):
+                    print(f"DEBUG picked up event: {ev}")
                 if ev.duration_quarters > 0:
                     events.append(NoteStopEvent(ev))
             # sort all events in the measure by start time
@@ -155,6 +157,8 @@ class MusicXMLParser:
 
                 # set start time of this event
                 ev.start_time = current_time
+                if getattr(ev, 'debug', False):
+                    print(f"DEBUG assigned start time: {ev}")
                 
                 # if this is a tempo change, update the current tempo
                 if isinstance(ev, TempoChange):
@@ -164,11 +168,14 @@ class MusicXMLParser:
                 # and set its duration
                 if isinstance(ev, NoteStopEvent):
                     ev.note.duration = current_time - ev.note.start_time
+                    if ev.note.debug:
+                        print(f"DEBUG assigned duration: {ev}")
                 else:
                     all_notes.append(ev)
 
                 assert ev.start_time is not None, f"Event {ev} has no start time"
             
+                
             all_notes.append(Barline(start_time=current_time))
 
         # run through all events and merge tied notes
@@ -188,6 +195,7 @@ class MusicXMLParser:
                     tied_note.duration = ev.start_time + ev.duration - tied_note.start_time
                 except KeyError:
                     print(f"Warning: Tie stop event without corresponding start event: {ev}")
+                    print(f"   current ties: {tied_notes}")
             else:
                 merged_notes.append(ev)
 
@@ -254,15 +262,15 @@ class MusicXMLParser:
         last_non_chord_note = None
 
         # Process measure elements
+        items = []
         for elem in measure_elem:
             tag = self.get_local_tag(elem.tag)
-
             if tag == "attributes":
-                items = self.parse_attributes(elem)
-                for item in items:
+                attributes = self.parse_attributes(elem)
+                for item in attributes:
                     item.start_quarters = current_quarters
                 # items should include updates to key signature, time signature, divisions, etc.
-                items.extend(items)
+                items.extend(attributes)
 
             elif tag == "direction":
                 items.extend(self.parse_direction(elem, current_quarters))
@@ -283,9 +291,6 @@ class MusicXMLParser:
                     # if this is a chord note, set the start time to the last non-chord note
                     item.start_quarters = last_non_chord_note.start_quarters
 
-                if elem.attrib.get('debug', None)is not None:
-                    item.debug = True
-
             elif tag in ("backup", "forward"):
                 duration_elem = elem.find(self.ns_tag('duration'))
                 if duration_elem is not None:
@@ -295,7 +300,7 @@ class MusicXMLParser:
                     elif tag == "forward":
                         current_quarters += duration_quarters
 
-            elif tag in ("print", "harmony"):
+            elif tag in ("print", "harmony", "barline"):
                 # ignore these tags for now (we should handle chord names eventually)
                 pass
 
@@ -304,8 +309,8 @@ class MusicXMLParser:
 
         measure = Measure(measure_number, events=items)
         for item in items:
-            item.measure = measure
-        
+            item.measure = measure            
+       
         return measure
 
     def parse_attributes(self, attributes_elem):
@@ -323,6 +328,9 @@ class MusicXMLParser:
                 beats = int(attr.find(self.ns_tag('beats')).text)
                 beat_type = int(attr.find(self.ns_tag('beat-type')).text)
                 attr_events.append(TimeSignatureChange(beats, beat_type, duration_quarters=0))
+            elif tag in ['clef', 'staves']:
+                # ignore these for now
+                pass
             else:
                 print(f"Warning: Ignoring unsupported attribute: {tag}")
 
@@ -466,8 +474,11 @@ class MusicXMLParser:
         is_grace = grace_elem is not None
         grace_slash = None if grace_elem is None else grace_elem.attrib.get('slash', None)
 
+        # marked in xml to trigger debug output
+        debug = note_elem.attrib.get('debug', None) is not None
+
         if is_rest:
-            return Rest(duration_quarters=duration_quarters, voice_number=voice_number, is_grace=is_grace)
+            return Rest(duration_quarters=duration_quarters, voice_number=voice_number, is_grace=is_grace, debug=debug)
         else:
             pitch = self.process_pitch(note_elem)
             return Note(
@@ -484,6 +495,7 @@ class MusicXMLParser:
                 is_chord=is_chord,
                 note_type=note_type,
                 line_number=note_elem.attrib.get('xml_lineno', None),
+                debug=debug,
             )
 
 

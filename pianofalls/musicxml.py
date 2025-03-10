@@ -101,8 +101,8 @@ class MusicXMLParser:
         assert parts, 'No parts found in the MusicXML file'
         parsed_parts = []
         for part_elem in parts:
-            measures = self.parse_part(part_elem)
-            parsed_parts.append(measures)
+            part = self.parse_part(part_elem)
+            parsed_parts.append(part)
 
         # Collate all measures from all parts
         all_measures:List[List[Measure]] = []
@@ -623,9 +623,6 @@ class MusicXMLPart(Part):
     def handle_stolen_time(self):
         """Adjust note timing for grace notes with stolen time"""
 
-        # TODO: how do grace notes interact with chords and voices?
-        #       what happens when we backup/forward over or near a grace note?
-
         all_notes = []
         for measure in self.measures:
             all_notes.extend([ev for ev in measure.events if isinstance(ev, Note)])
@@ -649,10 +646,14 @@ class MusicXMLPart(Part):
                         break
                     else:
                         prev_note = note
+
+            if len(grace_notes) == 0:
+                continue
+
             # we now have a previous note + grace notes + next note
             # first steal time from other notes and give to grace notes
-            gn_start_quarters = 0  # when to start grace notes relative to end of previous note
-            for gn in grace_notes:
+            gn_start_quarters = grace_notes[0].start_quarters
+            for i,gn in enumerate(grace_notes):
                 if gn.stolen_time == 'default':
                     # we can decide how to render the grace note; no timing was specified
                     stolen_note = next_note
@@ -666,19 +667,26 @@ class MusicXMLPart(Part):
                         # if there are multiple grace notes, keep the stolen time proportional to the original duration
                         stolen_note._original_duration_quarters = stolen_note.duration_quarters
                     stolen_duration_quarters = stolen_note._original_duration_quarters * abs(gn.stolen_time) / 100
-                stolen_note.duration_quarters -= stolen_duration_quarters
-                gn.duration_quarters += stolen_duration_quarters
+                gn.duration_quarters = stolen_duration_quarters
                 if stolen_note is prev_note:
+                    prev_note.duration_quarters -= stolen_duration_quarters
                     gn_start_quarters -= stolen_duration_quarters
                 elif stolen_note is next_note:
+                    next_note.duration_quarters -= stolen_duration_quarters
                     next_note.start_quarters += stolen_duration_quarters
+
                 assert gn.duration_quarters > 0, "Grace note has no duration"
 
             # next, determine the start time of the grace notes
-            start = prev_note.start_quarters + prev_note.duration_quarters + gn_start_quarters
             for gn in grace_notes:
-                gn.start_quarters = start
-                start += gn.duration_quarters
+                gn.start_quarters = gn_start_quarters
+                gn_start_quarters += gn.duration_quarters
+                if gn.start_quarters < 0:
+                    # if grace note start time is negative, it must take time from the previous measure
+                    assert last_note.measure != gn.measure
+                    # move the note to the previous measure and adjust the start time
+                    gn.measure = last_note.measure
+                    gn.start_quarters += last_note.start_quarters + last_note.duration_quarters
 
 
 class DivisionsChange(Event):

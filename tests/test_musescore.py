@@ -37,9 +37,30 @@ def compare_songs(song1, song2, names):
         dif = abs(a - b)
         return dif < 1e-2 or dif / max(abs(a), abs(b)) < 1e-2
     i = 0
+    song1_notes_playing = []
+    note1 = notes1.pop(0)
+    note2 = notes2.pop(0)
     while notes1 and notes2:
-        note1 = notes1.pop(0)
-        note2 = notes2.pop(0)
+
+        # check if the note is still playing
+        do_check = True
+        for note in song1_notes_playing:
+            if note.start_time + note.duration <= note1.start_time:
+                # note is done playing
+                song1_notes_playing.remove(note)
+                continue
+            if note.pitch == note1.pitch:
+                # ongoing note conflicts with the new note; ignore and loop
+                print(f'Note {note1} conflicts with ongoing note {note}')
+                note1 = notes1.pop(0)
+                do_check = False
+                break
+
+        if not do_check:
+            continue
+
+        song1_notes_playing.append(note1)
+
         differences = []
         if not close(note1.start_time, note2.start_time):
             differences.append(f'start time {note1.start_time} != {note2.start_time}')
@@ -59,10 +80,14 @@ def compare_songs(song1, song2, names):
             code.interact(local=locals())
             return False
         i += 1
+        note1 = notes1.pop(0)
+        note2 = notes2.pop(0)
+
     if notes1 or notes2:
         print(f'Different number of notes {len(song1.notes)} vs {len(song2.notes)}')
         code.interact(local=locals())
         return False
+    
     return True
 
 
@@ -87,7 +112,7 @@ if __name__ == '__main__':
     temp_dir = tempfile.mkdtemp()
     try:
         difference_found = False
-        for i in range(starting_n_measures, n_measures):
+        for i in range(starting_n_measures, n_measures+1):
             print(f'Checking {i} measures...')
             short_xml = extract_measures(original_xml, i)
 

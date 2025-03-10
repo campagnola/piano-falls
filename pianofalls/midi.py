@@ -104,6 +104,11 @@ def load_midi(filename:str) -> Song:
             current_notes[note_key].duration = note_end - note_start
             del current_notes[note_key]
 
+    # force start at 0
+    start_time = min([note.start_time for note in notes])
+    for note in notes:
+        note.start_time -= start_time
+
     return Song(notes)
 
 

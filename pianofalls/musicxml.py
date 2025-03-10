@@ -693,3 +693,53 @@ class DivisionsChange(Event):
     def __init__(self, divisions, start_time=None, **kwds):
         self.divisions = divisions
         super().__init__(start_time=start_time, **kwds)
+import music21
+from .song import Song, Note, Pitch, Part
+
+def load_musicxml_music21(filename):
+    # Parse the MusicXML file
+    score = music21.converter.parse(filename)
+    
+    # Flatten the score to access all elements
+    flat_score = score.flat
+    
+    # Alternatively, use secondsMap if timing issues arise
+    seconds_map = flat_score.secondsMap
+    
+    # Initialize an empty list to hold events
+    events = []
+    
+    # Iterate over all elements in the flat score or seconds_map
+    for element_info in seconds_map:
+        element = element_info['element']
+        if isinstance(element, music21.note.Note):
+            # Extract timing information
+            start_time = element_info['offsetSeconds']
+            duration = element_info['durationSeconds']
+            
+            # Extract pitch information
+            midi_note = element.pitch.midi
+            pitch = Pitch(midi_note=midi_note)
+            
+            # Extract part (instrument) information
+            part = element.getContextByClass(music21.stream.Part)
+            part_name = part.partName if part and part.partName else "Unknown Part"
+            part_obj = Part(name=part_name)
+            
+            # Extract staff information
+            staff = element.staff if element.staff else 1
+            
+            # Create a Note instance
+            note = Note(
+                pitch=pitch,
+                start_time=start_time,
+                duration=duration,
+                part=part_obj,
+                staff=staff
+            )
+            
+            # Add the note to events
+            events.append(note)
+    
+    # Create and return a Song instance
+    return Song(events)

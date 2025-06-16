@@ -2,7 +2,7 @@ import music21
 from .song import Song, Note, Pitch, Part
 
 
-def load_musicxml(filename):
+def load_musicxml_music21(filename):
     # Parse the MusicXML file
     score = music21.converter.parse(filename)
     
@@ -33,7 +33,7 @@ def load_musicxml(filename):
             part_obj = Part(name=part_name)
             
             # Extract staff information
-            staff = element.staff if element.staff else 1
+            # staff = element.staff if element.staff else 1
             
             # Create a Note instance
             note = Note(
@@ -41,7 +41,7 @@ def load_musicxml(filename):
                 start_time=start_time,
                 duration=duration,
                 part=part_obj,
-                staff=staff
+                # staff=staff
             )
             
             # Add the note to events
@@ -59,7 +59,7 @@ from .song import (Song, Pitch, Note, Rest, Event, Barline, Part,
                    TempoChange, KeySignatureChange, TimeSignatureChange)
 
 
-def load_musicxml_old(filename, add_line_numbers=False):
+def load_musicxml(filename, add_line_numbers=False):
     parser = MusicXMLParser()
     return parser.parse(filename, add_line_numbers=add_line_numbers)
 

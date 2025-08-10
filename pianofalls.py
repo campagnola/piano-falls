@@ -12,13 +12,26 @@ def excepthook(*args):
 if __name__ == '__main__':
     sys.excepthook = excepthook
 
-    midi_ports = MidiInput.get_available_ports()
+    try:
+        midi_ports = MidiInput.get_available_ports()
+    except ImportError as e:
+        if 'rtmidi' in str(e).lower():
+            print("Error: rtmidi backend not found for MIDI input.")
+            print("Please install rtmidi with: pip install python-rtmidi")
+            print("Or install via conda: conda install -c conda-forge rtmidi")
+            print("Alternatively, install a different mido backend of your choice.")
+            sys.exit(1)
+        else:
+            raise
     port_name = None
     for i, port_name in enumerate(midi_ports):
         if 'piano' in port_name.lower():
             break
 
     if port_name is None:
+        if len(midi_ports) == 0:
+            print("No MIDI ports found.")
+            sys.exit(1) 
         for i, port in enumerate(midi_ports):
             print(f"[{i}] {port}")
         port = int(input("Select MIDI port: "))
@@ -41,7 +54,8 @@ if __name__ == '__main__':
 
     w.show()
 
-    w.connect_midi_input(midi_input)
+    if midi_input is not None:
+        w.connect_midi_input(midi_input)
 
     if len(sys.argv) > 1:
         w.load(sys.argv[1])

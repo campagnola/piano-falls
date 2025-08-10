@@ -1,8 +1,8 @@
-import music21
 from .song import Song, Note, Pitch, Part
 
 
 def load_musicxml_music21(filename):
+    import music21
     # Parse the MusicXML file
     score = music21.converter.parse(filename)
     

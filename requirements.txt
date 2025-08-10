@@ -1,0 +1,7 @@
+# Core dependencies
+numpy
+mido
+rtmidi
+qtpy
+pyqtgraph
+numba

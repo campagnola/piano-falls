@@ -18,8 +18,10 @@ class MidiInput(QtCore.QObject):
         super().__init__()
 
     def callback(self, msg):
-        # warning: exceptions in this callback are silently ignored
-        self.message.emit(self, MidiMessage(msg))
+        try:
+            self.message.emit(self, MidiMessage(msg))
+        except Exception as e:
+            print(f"Exception in MidiInput.callback: {e}")
 
 
 class MidiMessage:

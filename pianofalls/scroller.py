@@ -48,6 +48,11 @@ class TimeScroller(QtCore.QObject):
             'follow': FollowScrollMode,
         }[mode](self.song)
 
+    def set_track_modes(self, track_modes):
+        """Set the track modes for the current scroll mode"""
+        if hasattr(self.scroll_mode, 'set_track_modes'):
+            self.scroll_mode.set_track_modes(track_modes)
+
     def set_time(self, time):
         self.current_time = time
         self.target_time = time
@@ -139,6 +144,12 @@ class WaitScrollMode(ScrollMode):
         super().__init__(*args, **kwargs)
         self.next_note_index = 0
         self.early_key_time = 1.0  # seconds before a note is due to be played where a key press will count as a hit
+        self.track_modes = {}  # Dictionary mapping track to mode
+        
+    def set_track_modes(self, track_modes):
+        """Set the track modes for this scroll mode"""
+        self.track_modes = track_modes
+        self.update_note_state()
 
     def set_song(self, song):
         super().set_song(song)
@@ -146,15 +157,28 @@ class WaitScrollMode(ScrollMode):
         if song is None:
             return
         # mark all notes as unplayed
-        for note in self.song.notes:
-            note.played = False
+        self.set_time(0)
 
     def set_time(self, time):
         super().set_time(time)
         self.next_note_index = self.song.index_of_note_starting_at(time)
-        # mark next event + all following events as unplayed
+        self.update_note_state()
+                
+    def update_note_state(self):
+        # mark next event + all following events as unplayed, but only for 'player' tracks
         for i, note in enumerate(self.song.notes):
-            note.played = i < self.next_note_index
+            track_key = (note.part, note.staff)
+            track_mode = self.track_modes.get(track_key, 'player')  # Default to 'player' if not set
+            
+            if i < self.next_note_index:
+                # Past notes are always marked as played
+                note.played = True
+            elif track_mode == 'player':
+                # Future notes in 'player' tracks are marked as unplayed
+                note.played = False
+            else:
+                # Future notes in non-player tracks (autoplay, visual only, hidden) are marked as played
+                note.played = True
 
     def update(self, current_time, dt, scroll_speed):        
         # check for recent midi input

@@ -90,6 +90,7 @@ class MainWindow(QtWidgets.QWidget):
         self.window().setWindowTitle(filename)
         self.last_filename = filename
         self.update_track_colors()
+        self.update_track_modes()  # Initialize track modes
         self.view.focusWidget()
         self.song_changed.emit(song)
 
@@ -119,4 +120,5 @@ class MainWindow(QtWidgets.QWidget):
         self.overview.set_track_colors(self.track_colors)
 
     def update_track_modes(self):
-        pass
+        self.track_modes = self.track_list.track_modes()
+        self.scroller.set_track_modes(self.track_modes)

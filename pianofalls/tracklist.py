@@ -47,6 +47,13 @@ class TrackList(QtWidgets.QWidget):
             colors[item.track] = (qcolor.red(), qcolor.green(), qcolor.blue())
         return colors
     
+    def track_modes(self):
+        """Return a dictionary mapping each track to its selected play mode"""
+        modes = {}
+        for item in self.track_items.values():
+            modes[item.track] = item.play_mode.currentText()
+        return modes
+    
     def set_song(self, song):
         self.tree.clear()
         self.track_items = {}
@@ -72,7 +79,7 @@ class TrackItem(QtWidgets.QTreeWidgetItem):
         self.color_button = pg.ColorButton(color=color)
         self.color_button.setMaximumWidth(40)
         self.play_mode = QtWidgets.QComboBox()
-        self.play_mode.addItems(['autoplay', 'follow', 'mute'])
+        self.play_mode.addItems(['player', 'autoplay', 'visual only', 'hidden'])
         super().__init__([self.track_name])
 
     @property

@@ -35,15 +35,20 @@ class NotesItem(GraphicsItemGroup):
 
         # Create new notes
         for i, note in enumerate(notes):
-            if note.duration == 0:
-                continue
             if note.pitch.key < 0 or note.pitch.key >= len(self.key_spec):
                 continue
             keyspec = self.key_spec[note.pitch.key]
             track_key = (note.part, note.staff)
             color = self.get_color(track_key)
 
-            note_item = NoteItem(x=keyspec['x_pos'], y=note.start_time, w=keyspec['width'], h=note.duration, 
+            # Ensure minimum note height for Qt display (5px minimum)
+            # The waterfall transform scales Y by -6 * zoom_factor, so we need
+            # duration * 6 * zoom_factor >= 5 pixels
+            # For zoom_factor = 1.0, this means duration >= 5/6 ≈ 0.833 seconds
+            # But zoom can vary, so we'll use a conservative minimum
+            min_duration = max(note.duration, 0.1)  # 0.1 seconds minimum
+            
+            note_item = NoteItem(x=keyspec['x_pos'], y=note.start_time, w=keyspec['width'], h=min_duration, 
                                  color=color, z=i, note=note)
             self.notes.append(note_item)
             self.addToGroup(note_item)

@@ -203,13 +203,20 @@ class WaitScrollMode(ScrollMode):
                     if matched_time is None or matched_time == note.start_time:
                         note.played = True
                         matched_time = note.start_time
+                        print(f"DEBUG: Note played - start_time={note.start_time}, pitch={note.pitch}, duration={note.duration}")
 
         # check if we can advance to the next note
+        old_next_note_index = self.next_note_index
         for i in range(self.next_note_index, len(self.song)):
             if self.song.notes[i].played:
                 self.next_note_index = i + 1
             else:
                 break
+        
+        # Debug print when we advance to a new note
+        if self.next_note_index != old_next_note_index and self.next_note_index < len(self.song):
+            next_note = self.song.notes[self.next_note_index]
+            print(f"DEBUG: Waiting for next note - start_time={next_note.start_time}, pitch={next_note.pitch}, duration={next_note.duration}")
 
         if self.next_note_index >= len(self.song):
             max_time = self.song.end_time

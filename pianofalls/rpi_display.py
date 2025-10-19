@@ -170,15 +170,13 @@ class RPiRenderer:
             if not isinstance(event, Note):
                 continue
             note = event
-            if note.duration == 0:
-                continue
             try:
                 keyspec = all_keyspec[note.pitch.key]
             except IndexError:
                 continue
             color = track_colors.get(note.track, (100, 100, 100))
             start_y_pixel = y_pixel_offset + frame.shape[0] - (row_scale * note.start_time)
-            stop_y_pixel = start_y_pixel - (row_scale * note.duration)
+            stop_y_pixel = start_y_pixel - max(1, row_scale * note.duration)
 
             w = int(keyspec['width'] * col_scale)
             x1 = first_col + int(keyspec['x_pos'] * col_scale)

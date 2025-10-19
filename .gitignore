@@ -1,1 +1,5 @@
 *.pyc
+.claude
+CLAUDE*
+pianofalls.egg-info/
+*.code-workspce

@@ -52,6 +52,19 @@ class Config:
             print(f"Error loading config file {self.config_file}: {e}")
             self.data = default_config
 
+        # Ensure all song entries have all fields from default_song_config
+        for song in self.data.get('songs', []):
+            for key, default_value in default_song_config.items():
+                if key not in song:
+                    song[key] = default_value
+
+        # Rebuild songs_by_sha lookup index
+        self.songs_by_sha = {}
+        for song in self.data.get('songs', []):
+            sha = song.get('sha')
+            if sha and sha not in self.songs_by_sha:
+                self.songs_by_sha[sha] = song
+
     def save(self):
         with open(self.config_file, 'w') as f:
             json.dump(self.data, f, indent=4)
@@ -72,6 +85,39 @@ class Config:
         sha = hashlib.sha1()
         sha.update(data)
         return sha.hexdigest()
+
+    def get_song_settings(self, sha):
+        """Get song settings by SHA hash. Returns default values if not found."""
+        song_data = self.songs_by_sha.get(sha, {})
+        
+        # Return default values merged with any stored values
+        settings = default_song_config.copy()
+        settings.update(song_data)
+        
+        return settings
+
+    def update_song_settings(self, sha, filename=None, speed=None, zoom=None, loops=None):
+        """Update song settings by SHA hash. Creates new entry if not found."""
+        # Use the existing songs_by_sha lookup instead of searching
+        existing_song = self.songs_by_sha.get(sha)
+        
+        if existing_song is None:
+            # Create new entry
+            existing_song = default_song_config.copy()
+            existing_song['sha'] = sha
+            self.data.setdefault('songs', []).append(existing_song)
+            # Add to the lookup dictionary
+            self.songs_by_sha[sha] = existing_song
+        
+        # Update specified fields
+        if filename is not None:
+            existing_song['filename'] = filename
+        if speed is not None:
+            existing_song['speed'] = speed
+        if zoom is not None:
+            existing_song['zoom'] = zoom
+        if loops is not None:
+            existing_song['loops'] = loops
 
 
 config = Config.get_config()

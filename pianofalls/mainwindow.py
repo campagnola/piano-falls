@@ -89,6 +89,10 @@ class MainWindow(QtWidgets.QWidget):
 
         self.window().setWindowTitle(filename)
         self.last_filename = filename
+        
+        # Load song-specific settings (speed and zoom)
+        self.ctrl_panel.load_song_settings(filename)
+        
         self.update_track_colors()
         self.view.focusWidget()
         self.song_changed.emit(song)

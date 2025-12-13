@@ -53,6 +53,16 @@ class TrackList(QtWidgets.QWidget):
         for item in self.track_items.values():
             modes[item.track] = item.play_mode.currentText()
         return modes
+
+    def set_track_modes(self, track_modes):
+        """Set track modes from a dictionary mapping track keys to mode strings"""
+        for track_key, mode in track_modes.items():
+            item = self.track_items.get(track_key)
+            if item and mode in ['player', 'autoplay', 'visual only', 'hidden']:
+                # Block signals to prevent triggering modes_changed while loading
+                item.play_mode.blockSignals(True)
+                item.play_mode.setCurrentText(mode)
+                item.play_mode.blockSignals(False)
     
     def set_song(self, song):
         self.tree.clear()

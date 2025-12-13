@@ -42,8 +42,7 @@ class CtrlPanel(QtWidgets.QWidget):
         )
         self.layout.addWidget(self.transpose_spin)
 
-        # Track current song's SHA for settings persistence
-        self.current_song_sha = None
+        # Track current song's filename for settings persistence
         self.current_filename = None
 
         self.load_button.clicked.connect(self.on_load)
@@ -66,39 +65,41 @@ class CtrlPanel(QtWidgets.QWidget):
         self.zoom_changed.emit(value / 100)
 
     def on_transpose_changed(self, value):
-        self.transpose_changed.emit(value)
         self._save_current_settings()
+        self.transpose_changed.emit(value)
 
     def load_song_settings(self, filename):
         """Load settings for a song file and update the UI controls."""
         if not filename:
             return
-            
+
         self.current_filename = filename
-        self.current_song_sha = config.get_sha(filename)
-        settings = config.get_song_settings(self.current_song_sha)
-        
+        settings = config.get_song_settings(filename)
+
         # Update UI controls without triggering signals
         self.speed_spin.blockSignals(True)
         self.zoom_spin.blockSignals(True)
-        
+        self.transpose_spin.blockSignals(True)
+
         self.speed_spin.setValue(int(settings['speed']))
         self.zoom_spin.setValue(int(settings['zoom'] * 100))  # Convert from decimal to percentage
-        
+        self.transpose_spin.setValue(settings['transpose'])
+
         self.speed_spin.blockSignals(False)
         self.zoom_spin.blockSignals(False)
-        
+        self.transpose_spin.blockSignals(False)
+
         # Emit signals to update the application state
         self.speed_changed.emit(settings['speed'] / 100)
         self.zoom_changed.emit(settings['zoom'])
+        self.transpose_changed.emit(settings['transpose'])
 
     def _save_current_settings(self):
-        """Save current speed and zoom settings for the current song."""
-        if self.current_song_sha and self.current_filename:
+        """Save current speed, zoom, and transpose settings for the current song."""
+        if self.current_filename:
             config.update_song_settings(
-                sha=self.current_song_sha,
                 filename=self.current_filename,
                 speed=self.speed_spin.value(),
-                zoom=self.zoom_spin.value() / 100  # Convert from percentage to decimal
+                zoom=self.zoom_spin.value() / 100,  # Convert from percentage to decimal
+                transpose=self.transpose_spin.value()
             )
-            config.save()

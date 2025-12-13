@@ -97,13 +97,26 @@ class MainWindow(QtWidgets.QWidget):
 
         self.window().setWindowTitle(filename)
         self.last_filename = filename
-        
-        # Load song-specific settings (speed and zoom)
+
+        # Load song-specific settings (speed, zoom, transpose, track_modes)
         self.ctrl_panel.load_song_settings(filename)
         register_file(filename, self)
-        
+
+        # Load and apply saved track modes
+        settings = config.get_song_settings(filename)
+        if settings.get('track_modes'):
+            # Convert from list of [part_name, staff, mode] back to {track: mode} dict
+            track_modes = {}
+            for part_name, staff, mode in settings['track_modes']:
+                # Find the matching track by part name and staff
+                for track in song.tracks:
+                    if track[0] and track[0].name == part_name and track[1] == staff:
+                        track_modes[track] = mode
+                        break
+            self.track_list.set_track_modes(track_modes)
+
         self.update_track_colors()
-        self.update_track_modes()  # Initialize track modes
+        self.update_track_modes()  # Initialize track modes (also saves them if changed)
         self.view.focusWidget()
         self.song_changed.emit(song)
 
@@ -137,6 +150,15 @@ class MainWindow(QtWidgets.QWidget):
         self.scroller.set_track_modes(self.track_modes)
         self.view.set_track_modes(self.track_modes)
 
+        # Save track modes to config
+        if self.last_filename:
+            # Convert to list of [part_name, staff, mode] for JSON serialization
+            track_modes_list = [[part.name, staff, mode] for (part, staff), mode in self.track_modes.items()]
+            config.update_song_settings(
+                filename=self.last_filename,
+                track_modes=track_modes_list
+            )
+
     def _apply_transpose_to_song(self, song, semitones):
         """Apply transpose to all notes by modifying Pitch objects"""
         from .song import Pitch
@@ -151,6 +173,10 @@ class MainWindow(QtWidgets.QWidget):
     def on_transpose_changed(self, transpose):
         """Handle transpose control change - reload song with new transpose value"""
         if self.last_filename is None:
+            return
+
+        # Only reload if transpose actually changed
+        if self.current_transpose == transpose:
             return
 
         self.current_transpose = transpose

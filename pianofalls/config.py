@@ -24,6 +24,7 @@ default_song_config = {
     "zoom": 1.0,
     "transpose": 0,
     "loops": [],
+    "track_modes": [],  # List of [part_name, staff, mode] tuples
 }
 
 
@@ -77,31 +78,30 @@ class Config:
         self.data[key] = value
         self.save()
 
-    def get_song_info(self, filename):
-        sha = self.get_sha(filename)
-        return self.songs_by_sha.get(sha, {})
-    
     def get_sha(self, filename):
         data = open(filename, 'rb').read()
         sha = hashlib.sha1()
         sha.update(data)
         return sha.hexdigest()
 
-    def get_song_settings(self, sha):
-        """Get song settings by SHA hash. Returns default values if not found."""
+    def get_song_settings(self, filename):
+        """Get song settings by filename. Returns default values merged with stored values."""
+        sha = self.get_sha(filename)
         song_data = self.songs_by_sha.get(sha, {})
-        
+
         # Return default values merged with any stored values
         settings = default_song_config.copy()
         settings.update(song_data)
-        
+
         return settings
 
-    def update_song_settings(self, sha, filename=None, speed=None, zoom=None, loops=None):
-        """Update song settings by SHA hash. Creates new entry if not found."""
+    def update_song_settings(self, filename, speed=None, zoom=None, loops=None, transpose=None, track_modes=None):
+        """Update song settings by filename. Creates new entry if not found."""
+        sha = self.get_sha(filename)
+
         # Use the existing songs_by_sha lookup instead of searching
         existing_song = self.songs_by_sha.get(sha)
-        
+
         if existing_song is None:
             # Create new entry
             existing_song = default_song_config.copy()
@@ -109,16 +109,21 @@ class Config:
             self.data.setdefault('songs', []).append(existing_song)
             # Add to the lookup dictionary
             self.songs_by_sha[sha] = existing_song
-        
-        # Update specified fields
-        if filename is not None:
-            existing_song['filename'] = filename
+
+        # Update filename and other specified fields
+        existing_song['filename'] = filename
         if speed is not None:
             existing_song['speed'] = speed
         if zoom is not None:
             existing_song['zoom'] = zoom
         if loops is not None:
             existing_song['loops'] = loops
+        if transpose is not None:
+            existing_song['transpose'] = transpose
+        if track_modes is not None:
+            existing_song['track_modes'] = track_modes
+
+        self.save()
 
 
 config = Config.get_config()

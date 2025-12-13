@@ -5,6 +5,7 @@ from .qt import QtWidgets, QtCore
 class CtrlPanel(QtWidgets.QWidget):
     speed_changed = QtCore.Signal(float)
     zoom_changed = QtCore.Signal(float)
+    transpose_changed = QtCore.Signal(int)
 
     def __init__(self):
         super().__init__()
@@ -32,9 +33,18 @@ class CtrlPanel(QtWidgets.QWidget):
         )
         self.layout.addWidget(self.zoom_spin)
 
+        self.transpose_label = QtWidgets.QLabel('Transpose:')
+        self.transpose_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.layout.addWidget(self.transpose_label)
+        self.transpose_spin = QtWidgets.QSpinBox(
+            minimum=-48, maximum=48, singleStep=1, value=0, suffix=' half-steps'
+        )
+        self.layout.addWidget(self.transpose_spin)
+
         self.load_button.clicked.connect(self.on_load)
         self.speed_spin.valueChanged.connect(self.on_speed_changed)
         self.zoom_spin.valueChanged.connect(self.on_zoom_changed)
+        self.transpose_spin.valueChanged.connect(self.on_transpose_changed)
 
     def on_load(self):
         mw = self.window()
@@ -45,6 +55,9 @@ class CtrlPanel(QtWidgets.QWidget):
 
     def on_speed_changed(self, value):
         self.speed_changed.emit(value / 100)
-        
+
     def on_zoom_changed(self, value):
         self.zoom_changed.emit(value / 100)
+
+    def on_transpose_changed(self, value):
+        self.transpose_changed.emit(value)

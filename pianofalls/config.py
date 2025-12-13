@@ -22,6 +22,7 @@ default_song_config = {
     "sha": "",
     "speed": 100.0,
     "zoom": 1.0,
+    "transpose": 0,
     "loops": [],
 }
 

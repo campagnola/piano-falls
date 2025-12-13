@@ -18,6 +18,7 @@ class MainWindow(QtWidgets.QWidget):
     def __init__(self):
         super().__init__()
         self.last_filename = None
+        self.current_transpose = 0
 
         self.scroller = TimeScroller()
 
@@ -52,6 +53,7 @@ class MainWindow(QtWidgets.QWidget):
         self.scroller.current_time_changed.connect(self.time_changed)
         self.ctrl_panel.speed_changed.connect(self.scroller.set_scroll_speed)
         self.ctrl_panel.zoom_changed.connect(self.view.waterfall.set_zoom)
+        self.ctrl_panel.transpose_changed.connect(self.on_transpose_changed)
         self.view.wheel_event.connect(self.view_wheel_event)
         self.overview.clicked.connect(self.scroller.set_time)
         self.file_tree.file_double_clicked.connect(self.load)
@@ -70,13 +72,18 @@ class MainWindow(QtWidgets.QWidget):
         filename = os.path.expanduser(filename)
         ext = os.path.splitext(filename)[1]
         if filename == '':
-            return        
+            return
         elif ext in ['.mid', '.midi']:
             song = load_midi(filename)
         elif ext in ['.xml', '.mxl', '.musicxml']:
             song = load_musicxml(filename)
         else:
             raise ValueError(f'Unsupported file type: {filename}')
+
+        # Apply transpose if non-zero
+        if self.current_transpose != 0:
+            self._apply_transpose_to_song(song, self.current_transpose)
+
         self.set_song(song, filename)
 
     def set_song(self, song, filename):
@@ -122,3 +129,24 @@ class MainWindow(QtWidgets.QWidget):
     def update_track_modes(self):
         self.track_modes = self.track_list.track_modes()
         self.scroller.set_track_modes(self.track_modes)
+
+    def _apply_transpose_to_song(self, song, semitones):
+        """Apply transpose to all notes by modifying Pitch objects"""
+        from .song import Pitch
+
+        for note in song.notes:
+            if note.pitch is not None:
+                new_midi_note = note.pitch.midi_note + semitones
+                # Clamp to valid MIDI range
+                new_midi_note = max(0, min(127, new_midi_note))
+                note.pitch = Pitch(new_midi_note)
+
+    def on_transpose_changed(self, transpose):
+        """Handle transpose control change - reload song with new transpose value"""
+        if self.last_filename is None:
+            return
+
+        self.current_transpose = transpose
+
+        # Reload the song from file with new transpose
+        self.load(self.last_filename)

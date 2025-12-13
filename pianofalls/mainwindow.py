@@ -104,16 +104,7 @@ class MainWindow(QtWidgets.QWidget):
 
         # Load and apply saved track modes
         settings = config.get_song_settings(filename)
-        if settings.get('track_modes'):
-            # Convert from list of [part_name, staff, mode] back to {track: mode} dict
-            track_modes = {}
-            for part_name, staff, mode in settings['track_modes']:
-                # Find the matching track by part name and staff
-                for track in song.tracks:
-                    if track[0] and track[0].name == part_name and track[1] == staff:
-                        track_modes[track] = mode
-                        break
-            self.track_list.set_track_modes(track_modes)
+        self.track_list.restore_modes(song, settings.get('track_modes'))
 
         self.update_track_colors()
         self.update_track_modes()  # Initialize track modes (also saves them if changed)
@@ -152,11 +143,9 @@ class MainWindow(QtWidgets.QWidget):
 
         # Save track modes to config
         if self.last_filename:
-            # Convert to list of [part_name, staff, mode] for JSON serialization
-            track_modes_list = [[part.name, staff, mode] for (part, staff), mode in self.track_modes.items()]
             config.update_song_settings(
                 filename=self.last_filename,
-                track_modes=track_modes_list
+                track_modes=self.track_list.serialize_modes()
             )
 
     def _apply_transpose_to_song(self, song, semitones):

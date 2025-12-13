@@ -63,6 +63,38 @@ class TrackList(QtWidgets.QWidget):
                 item.play_mode.blockSignals(True)
                 item.play_mode.setCurrentText(mode)
                 item.play_mode.blockSignals(False)
+
+    def serialize_modes(self):
+        """
+        Serialize track modes to a JSON-compatible format.
+
+        Returns a list of [part_name, staff, mode] for each track.
+        This format is used for saving to the configuration file.
+        """
+        modes = self.track_modes()
+        return [[part.name, staff, mode] for (part, staff), mode in modes.items()]
+
+    def restore_modes(self, song, serialized_modes):
+        """
+        Restore track modes from serialized format.
+
+        Args:
+            song: The Song object containing tracks
+            serialized_modes: List of [part_name, staff, mode] lists
+        """
+        if not serialized_modes:
+            return
+
+        # Convert from list of [part_name, staff, mode] to {track: mode} dict
+        track_modes = {}
+        for part_name, staff, mode in serialized_modes:
+            # Find the matching track by part name and staff
+            for track in song.tracks:
+                if track[0] and track[0].name == part_name and track[1] == staff:
+                    track_modes[track] = mode
+                    break
+
+        self.set_track_modes(track_modes)
     
     def set_song(self, song):
         self.tree.clear()

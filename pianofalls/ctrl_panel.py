@@ -1,6 +1,5 @@
 import os
 from .qt import QtWidgets, QtCore
-from .config import config
 
 
 class CtrlPanel(QtWidgets.QWidget):
@@ -42,8 +41,8 @@ class CtrlPanel(QtWidgets.QWidget):
         )
         self.layout.addWidget(self.transpose_spin)
 
-        # Track current song's filename for settings persistence
-        self.current_filename = None
+        # Track current song info for settings persistence
+        self.song_info = None
 
         self.load_button.clicked.connect(self.on_load)
         self.speed_spin.valueChanged.connect(self.on_speed_changed)
@@ -52,8 +51,9 @@ class CtrlPanel(QtWidgets.QWidget):
 
     def on_load(self):
         mw = self.window()
-        if mw.last_filename is not None:
-            path = os.path.dirname(mw.last_filename)
+        path = None
+        if mw.song_info is not None:
+            path = os.path.dirname(mw.song_info.filename)
         filename, _ = QtWidgets.QFileDialog.getOpenFileName(self, 'Open File', path, 'MIDI Files (*.mid);;MusicXML Files (*.xml)')
         mw.load(filename)
 
@@ -68,13 +68,13 @@ class CtrlPanel(QtWidgets.QWidget):
         self._save_current_settings()
         self.transpose_changed.emit(value)
 
-    def load_song_settings(self, filename):
-        """Load settings for a song file and update the UI controls."""
-        if not filename:
+    def load_song_settings(self, song_info):
+        """Load settings from a SongInfo instance and update the UI controls."""
+        if not song_info:
             return
 
-        self.current_filename = filename
-        settings = config.get_song_settings(filename)
+        self.song_info = song_info
+        settings = song_info.get_settings()
 
         # Update UI controls without triggering signals
         self.speed_spin.blockSignals(True)
@@ -96,9 +96,8 @@ class CtrlPanel(QtWidgets.QWidget):
 
     def _save_current_settings(self):
         """Save current speed, zoom, and transpose settings for the current song."""
-        if self.current_filename:
-            config.update_song_settings(
-                filename=self.current_filename,
+        if self.song_info:
+            self.song_info.update_settings(
                 speed=self.speed_spin.value(),
                 zoom=self.zoom_spin.value() / 100,  # Convert from percentage to decimal
                 transpose=self.transpose_spin.value()

@@ -5,12 +5,10 @@ from .overview import Overview
 from .view import View
 from .ctrl_panel import CtrlPanel
 from .scroller import TimeScroller
-from .midi import load_midi
-from .musicxml import load_musicxml
 from .file_tree import FileTree
 from .tracklist import TrackList
+from .song_info import SongInfo
 from .config import config
-from .file_registry import register_file
 
 
 class MainWindow(QtWidgets.QWidget):
@@ -18,7 +16,7 @@ class MainWindow(QtWidgets.QWidget):
 
     def __init__(self):
         super().__init__()
-        self.last_filename = None
+        self.song_info = None
         self.current_transpose = 0
 
         self.scroller = TimeScroller()
@@ -71,45 +69,47 @@ class MainWindow(QtWidgets.QWidget):
     def load(self, filename):
         """Load a MIDI or MusicXML file and display it on the waterfall"""
         filename = os.path.expanduser(filename)
-        ext = os.path.splitext(filename)[1]
         if filename == '':
             return
-        elif ext in ['.mid', '.midi']:
-            song = load_midi(filename)
-        elif ext in ['.xml', '.mxl', '.musicxml']:
-            song = load_musicxml(filename)
-        else:
-            raise ValueError(f'Unsupported file type: {filename}')
+
+        # Create SongInfo (handles file loading, registration, etc.)
+        song_info = SongInfo.load(filename, parent=self)
+
+        # Get the Song instance
+        song = song_info.get_song()
 
         # Apply transpose if non-zero
         if self.current_transpose != 0:
             self._apply_transpose_to_song(song, self.current_transpose)
 
-        self.set_song(song, filename)
+        self.set_song(song_info)
 
-    def set_song(self, song, filename):
-        self.song = song
-        
-        self.overview.set_song(song)
-        self.view.set_song(song)
-        self.scroller.set_song(song)
-        self.track_list.set_song(song)
+    def set_song(self, song_info):
+        """
+        Set the current song from a SongInfo instance.
 
-        self.window().setWindowTitle(filename)
-        self.last_filename = filename
+        Parameters
+        ----------
+        song_info : SongInfo
+            The song information object
+        """
+        self.song_info = song_info
 
-        # Load song-specific settings (speed, zoom, transpose, track_modes)
-        self.ctrl_panel.load_song_settings(filename)
-        register_file(filename, self)
+        self.overview.set_song(song_info)
+        self.view.set_song(song_info)
+        self.scroller.set_song(song_info)
+        self.track_list.set_song(song_info)
 
-        # Load and apply saved track modes
-        settings = config.get_song_settings(filename)
-        self.track_list.restore_modes(song, settings.get('track_modes'))
+        self.window().setWindowTitle(song_info.filename)
+
+        # Load song-specific settings
+        self.ctrl_panel.load_song_settings(song_info)
+        self.track_list.restore_modes(song_info)
 
         self.update_track_colors()
-        self.update_track_modes()  # Initialize track modes (also saves them if changed)
+        self.update_track_modes()
         self.view.focusWidget()
-        self.song_changed.emit(song)
+        self.song_changed.emit(song_info.get_song())
 
     def connect_midi_input(self, midi_input):
         self.view.connect_midi_input(midi_input)
@@ -142,11 +142,8 @@ class MainWindow(QtWidgets.QWidget):
         self.view.set_track_modes(self.track_modes)
 
         # Save track modes to config
-        if self.last_filename:
-            config.update_song_settings(
-                filename=self.last_filename,
-                track_modes=self.track_list.serialize_modes()
-            )
+        if self.song_info:
+            self.song_info.update_settings(track_modes=self.track_list.serialize_modes())
 
     def _apply_transpose_to_song(self, song, semitones):
         """Apply transpose to all notes by modifying Pitch objects"""
@@ -161,7 +158,7 @@ class MainWindow(QtWidgets.QWidget):
 
     def on_transpose_changed(self, transpose):
         """Handle transpose control change - reload song with new transpose value"""
-        if self.last_filename is None:
+        if self.song_info is None:
             return
 
         # Only reload if transpose actually changed
@@ -171,4 +168,4 @@ class MainWindow(QtWidgets.QWidget):
         self.current_transpose = transpose
 
         # Reload the song from file with new transpose
-        self.load(self.last_filename)
+        self.load(self.song_info.filename)

@@ -32,9 +32,11 @@ class TimeScroller(QtCore.QObject):
     def toggle_scrolling(self):
         self.set_scrolling(not self.scrolling)
 
-    def set_song(self, song):
-        self.song = song
-        self.scroll_mode.set_song(song)
+    def set_song(self, song_info):
+        """Set the song from a SongInfo instance."""
+        self.song = song_info.get_song()
+        self.song_info = song_info
+        self.scroll_mode.set_song(self.song)
         self.set_time(-2)
         self.set_scrolling(True)
 

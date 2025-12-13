@@ -1,6 +1,5 @@
 from .qt import QtWidgets, QtGui, QtCore
 from .notes_item import NotesItem
-from .song import Song
 
 
 class Overview(QtWidgets.QGraphicsView):
@@ -41,7 +40,9 @@ class Overview(QtWidgets.QGraphicsView):
     def set_track_colors(self, track_colors):
         self.notes_item.set_track_colors(track_colors)
 
-    def set_song(self, song: Song):
+    def set_song(self, song_info):
+        """Set the song from a SongInfo instance."""
+        song = song_info.get_song()
         self.notes_item.set_notes(song.notes)
         self.resizeEvent()
 

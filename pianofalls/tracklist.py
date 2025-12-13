@@ -74,16 +74,18 @@ class TrackList(QtWidgets.QWidget):
         modes = self.track_modes()
         return [[part.name, staff, mode] for (part, staff), mode in modes.items()]
 
-    def restore_modes(self, song, serialized_modes):
+    def restore_modes(self, song_info):
         """
-        Restore track modes from serialized format.
+        Restore track modes from a SongInfo instance.
 
         Args:
-            song: The Song object containing tracks
-            serialized_modes: List of [part_name, staff, mode] lists
+            song_info: The SongInfo object
         """
+        serialized_modes = song_info.get_setting('track_modes')
         if not serialized_modes:
             return
+
+        song = song_info.get_song()
 
         # Convert from list of [part_name, staff, mode] to {track: mode} dict
         track_modes = {}
@@ -96,7 +98,11 @@ class TrackList(QtWidgets.QWidget):
 
         self.set_track_modes(track_modes)
     
-    def set_song(self, song):
+    def set_song(self, song_info):
+        """Set the song from a SongInfo instance."""
+        song = song_info.get_song()
+        self.song_info = song_info
+
         self.tree.clear()
         self.track_items = {}
         i = 0

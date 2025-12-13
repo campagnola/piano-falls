@@ -2,7 +2,6 @@ import time
 from .qt import QtWidgets, QtGui, QtCore
 from .keyboard import Keyboard
 from .waterfall import Waterfall
-from .midi import Song
 
 
 class View(QtWidgets.QGraphicsView):
@@ -58,9 +57,12 @@ class View(QtWidgets.QGraphicsView):
     def wheelEvent(self, event):
         self.wheel_event.emit(event)
 
-    def set_song(self, song:Song):
+    def set_song(self, song_info):
+        """Set the song from a SongInfo instance."""
+        song = song_info.get_song()
         self.waterfall.set_song(song)
         self.song = song
+        self.song_info = song_info
         self.resizeEvent()
 
     def set_time(self, time):

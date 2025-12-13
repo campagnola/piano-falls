@@ -129,6 +129,7 @@ class MainWindow(QtWidgets.QWidget):
     def update_track_modes(self):
         self.track_modes = self.track_list.track_modes()
         self.scroller.set_track_modes(self.track_modes)
+        self.view.set_track_modes(self.track_modes)
 
     def _apply_transpose_to_song(self, song, semitones):
         """Apply transpose to all notes by modifying Pitch objects"""

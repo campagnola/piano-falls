@@ -8,8 +8,10 @@ class NotesItem(GraphicsItemGroup):
         super().__init__()
         self._bounds = QtCore.QRectF()
         self.notes = []
+        self.song_notes = []  # Store the original notes list from the song
 
         self.track_colors = {}
+        self.track_modes = {}
 
         self.key_spec = Keyboard.key_spec()
         self.bars = [QtWidgets.QGraphicsLineItem(self.key_spec[0]['x_pos'], 0, self.key_spec[-1]['x_pos'] + self.key_spec[-1]['width'], 0)]
@@ -22,10 +24,19 @@ class NotesItem(GraphicsItemGroup):
         for note_item in self.notes:
             note_item.set_color(self.get_color(note_item.track_key))
 
+    def set_track_modes(self, track_modes):
+        self.track_modes = track_modes
+        # Regenerate notes with the new track modes
+        if self.song_notes:
+            self.set_notes(self.song_notes)
+
     def get_color(self, track_key):
         return self.track_colors.get(track_key, (100, 100, 100))
 
     def set_notes(self, notes):
+        # Store the original notes list for regeneration
+        self.song_notes = notes
+
         bounds = QtCore.QRectF()
 
         # Clear any existing notes
@@ -37,8 +48,15 @@ class NotesItem(GraphicsItemGroup):
         for i, note in enumerate(notes):
             if note.pitch.key < 0 or note.pitch.key >= len(self.key_spec):
                 continue
-            keyspec = self.key_spec[note.pitch.key]
+
             track_key = (note.part, note.staff)
+            track_mode = self.track_modes.get(track_key, 'player')
+
+            # Skip notes from hidden tracks
+            if track_mode == 'hidden':
+                continue
+
+            keyspec = self.key_spec[note.pitch.key]
             color = self.get_color(track_key)
 
             # Ensure minimum note height for Qt display (5px minimum)
@@ -47,8 +65,8 @@ class NotesItem(GraphicsItemGroup):
             # For zoom_factor = 1.0, this means duration >= 5/6 ≈ 0.833 seconds
             # But zoom can vary, so we'll use a conservative minimum
             min_duration = max(note.duration, 0.1)  # 0.1 seconds minimum
-            
-            note_item = NoteItem(x=keyspec['x_pos'], y=note.start_time, w=keyspec['width'], h=min_duration, 
+
+            note_item = NoteItem(x=keyspec['x_pos'], y=note.start_time, w=keyspec['width'], h=min_duration,
                                  color=color, z=i, note=note)
             self.notes.append(note_item)
             self.addToGroup(note_item)

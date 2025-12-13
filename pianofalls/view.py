@@ -42,6 +42,9 @@ class View(QtWidgets.QGraphicsView):
     def set_track_colors(self, track_colors):
         self.waterfall.set_track_colors(track_colors)
 
+    def set_track_modes(self, track_modes):
+        self.waterfall.set_track_modes(track_modes)
+
     def resizeEvent(self, event=None):
         w = 88
         h = w * self.height() / self.width()

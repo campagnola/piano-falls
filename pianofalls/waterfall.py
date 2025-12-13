@@ -28,6 +28,9 @@ class Waterfall(QtWidgets.QGraphicsWidget):
     def set_track_colors(self, track_colors):
         self.notes_item.set_track_colors(track_colors)
 
+    def set_track_modes(self, track_modes):
+        self.notes_item.set_track_modes(track_modes)
+
     def set_song(self, song: Song):
         self.song = song
         self.notes_item.set_notes(song.notes)

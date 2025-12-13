@@ -76,18 +76,21 @@ class Song:
         return inds
 
     def get_events_active_in_range(self, time_range, filter=None):
-        start_inds = self.indices_of_events_active_at(time_range[0])
-        end_inds = self.indices_of_events_active_at(time_range[1])
-        if len(start_inds) == 0 and len(end_inds) == 0:
+        # Collect all event indices from bins that overlap with the time range
+        all_inds = []
+        for t in range(int(time_range[0]), int(time_range[1]) + 1):
+            all_inds.extend(self.indices_of_events_active_at(t))
+
+        if len(all_inds) == 0:
             return []
 
-        events = self.events[min(start_inds + end_inds):max(start_inds + end_inds)+1]
+        events = self.events[min(all_inds):max(all_inds)+1]
 
         if isinstance(filter, str):
             events = [e for e in events if type(e).__name__ == filter]
         elif filter is not None:
             events = [e for e in events if isinstance(e, filter)]
-        
+
         return events
 
     @property

@@ -1,0 +1,12 @@
+channels:
+  - conda-forge
+#  - defaults
+dependencies:
+  - python=3.9
+  - pip
+  - numpy
+  - alsa-plugins  # for linux
+  - pip:
+    - mido
+    - python-rtmidi
+    - pyqt5

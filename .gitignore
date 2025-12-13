@@ -1,2 +1,6 @@
 *.pyc
 music_files/*
+.claude
+CLAUDE*
+pianofalls.egg-info/
+*.code-workspce

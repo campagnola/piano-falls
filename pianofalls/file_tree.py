@@ -2,6 +2,7 @@ import os
 import pathlib
 import shutil
 from .qt import QtCore, QtWidgets
+from .file_registry import handle_delete, handle_move
 
 
 class FileTree(QtWidgets.QTreeWidget):
@@ -73,6 +74,7 @@ class FileTree(QtWidgets.QTreeWidget):
                 return
 
             old_path = item.path
+            old_was_directory = old_path.is_dir()
             try:
                 old_path.rename(new_path)
             except OSError as exc:
@@ -85,7 +87,7 @@ class FileTree(QtWidgets.QTreeWidget):
                     item.setText(0, item.path.name)
                 return
 
-            self._update_paths_after_move(item, old_path, new_path)
+            self._update_paths_after_move(item, old_path, new_path, old_was_directory)
 
     def contextMenuEvent(self, event):
         item = self.itemAt(event.pos())
@@ -118,6 +120,8 @@ class FileTree(QtWidgets.QTreeWidget):
         item = self.currentItem()
         if not isinstance(item, FileTreeItem):
             return
+        deleted_path = pathlib.Path(item.path)
+        was_directory = deleted_path.is_dir()
 
         response = QtWidgets.QMessageBox.question(
             self,
@@ -142,6 +146,7 @@ class FileTree(QtWidgets.QTreeWidget):
             )
             return
 
+        handle_delete(deleted_path, was_directory=was_directory)
         self._remove_item(item)
 
     def _remove_item(self, item):
@@ -152,9 +157,55 @@ class FileTree(QtWidgets.QTreeWidget):
         else:
             parent.removeChild(item)
 
-    def _update_paths_after_move(self, item, old_path, new_path):
+    def _update_paths_after_move(self, item, old_path, new_path, old_was_directory):
+        """Refresh tree item text/paths and sync metadata for a move or rename."""
         if isinstance(item, FileTreeItem):
             item.update_paths(old_path, new_path)
+            self._sync_metadata_after_move(
+                pathlib.Path(old_path) if old_path is not None else None,
+                pathlib.Path(item.path),
+                old_was_directory
+            )
+
+    def _sync_metadata_after_move(self, old_base_path, new_base_path, old_was_directory):
+        """Walk moved content and update the shared registry so hashes map to new paths."""
+        new_base_path = pathlib.Path(new_base_path)
+        paths_to_process = set()
+
+        if new_base_path.exists():
+            if new_base_path.is_dir():
+                try:
+                    for candidate in new_base_path.rglob('*'):
+                        if candidate.is_file() and self._is_supported_file(candidate):
+                            paths_to_process.add(candidate)
+                except (OSError, PermissionError):
+                    pass
+            elif new_base_path.is_file() and self._is_supported_file(new_base_path):
+                paths_to_process.add(new_base_path)
+
+        if not paths_to_process and new_base_path.is_file() and self._is_supported_file(new_base_path):
+            paths_to_process.add(new_base_path)
+
+        if not paths_to_process and old_base_path is not None and not old_was_directory:
+            handle_delete(old_base_path, was_directory=old_was_directory)
+            return
+
+        for candidate in paths_to_process:
+            old_candidate = None
+            if old_base_path is not None and new_base_path.is_dir():
+                try:
+                    relative = candidate.relative_to(new_base_path)
+                    old_candidate = old_base_path / relative
+                except ValueError:
+                    old_candidate = None
+            elif old_base_path is not None and not new_base_path.is_dir():
+                old_candidate = old_base_path
+
+            handle_move(old_candidate, candidate, parent=self)
+
+    def _is_supported_file(self, path):
+        """Return True when the file suffix is one we manage metadata for."""
+        return path.suffix.lower() in {'.mid', '.midi', '.mxl', '.xml', '.musicxml'}
 
     def dragEnterEvent(self, event):
         if self._drag_item is not None or event.source() is self:
@@ -205,6 +256,7 @@ class FileTree(QtWidgets.QTreeWidget):
             return
 
         source_path = self._drag_item.path
+        source_was_directory = source_path.is_dir()
         destination_path = target_dir_item.path / source_path.name
 
         if destination_path == source_path:
@@ -244,7 +296,7 @@ class FileTree(QtWidgets.QTreeWidget):
 
         moved_item = self._drag_item
         self._remove_item(moved_item)
-        self._update_paths_after_move(moved_item, source_path, destination_path)
+        self._update_paths_after_move(moved_item, source_path, destination_path, source_was_directory)
 
         if isinstance(target_dir_item, FileTreeItem):
             target_dir_item.addChild(moved_item)
@@ -370,7 +422,7 @@ class FileTreeItem(QtWidgets.QTreeWidgetItem):
     def update_paths(self, old_path, new_path):
         self.path = new_path
         self.setText(0, new_path.name)
-        if old_path.is_dir():
+        if new_path.is_dir():
             for index in range(self.childCount()):
                 child = self.child(index)
                 if isinstance(child, FileTreeItem):

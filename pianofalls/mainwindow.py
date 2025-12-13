@@ -10,6 +10,7 @@ from .musicxml import load_musicxml
 from .file_tree import FileTree
 from .tracklist import TrackList
 from .config import config
+from .file_registry import register_file
 
 
 class MainWindow(QtWidgets.QWidget):
@@ -92,6 +93,7 @@ class MainWindow(QtWidgets.QWidget):
         
         # Load song-specific settings (speed and zoom)
         self.ctrl_panel.load_song_settings(filename)
+        register_file(filename, self)
         
         self.update_track_colors()
         self.view.focusWidget()

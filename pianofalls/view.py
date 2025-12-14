@@ -8,7 +8,7 @@ class View(QtWidgets.QGraphicsView):
 
     wheel_event = QtCore.Signal(object)
 
-    def __init__(self, parent=None):
+    def __init__(self, display_model, parent=None):
         super().__init__(parent)
         self.last_draw_time = time.perf_counter()
         self.average_draw_time = 0
@@ -17,7 +17,7 @@ class View(QtWidgets.QGraphicsView):
         self.setScene(self.scene)
 
         self.setBackgroundRole(QtGui.QPalette.ColorRole.NoRole)
-        self.setBackgroundBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0)))        
+        self.setBackgroundBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0)))
         self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
         self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -33,16 +33,10 @@ class View(QtWidgets.QGraphicsView):
         self.keyboard = Keyboard()
         self.scene.addItem(self.keyboard)
 
-        self.waterfall = Waterfall()
+        self.waterfall = Waterfall(display_model)
         self.scene.addItem(self.waterfall)
 
         self.resizeEvent()
-
-    def set_track_colors(self, track_colors):
-        self.waterfall.set_track_colors(track_colors)
-
-    def set_track_modes(self, track_modes):
-        self.waterfall.set_track_modes(track_modes)
 
     def resizeEvent(self, event=None):
         w = 88
@@ -59,9 +53,7 @@ class View(QtWidgets.QGraphicsView):
 
     def set_song(self, song_info):
         """Set the song from a SongInfo instance."""
-        song = song_info.get_song()
-        self.waterfall.set_song(song)
-        self.song = song
+        self.song = song_info.get_song()
         self.song_info = song_info
         self.resizeEvent()
 

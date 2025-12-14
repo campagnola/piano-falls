@@ -9,6 +9,7 @@ from .file_tree import FileTree
 from .tracklist import TrackList
 from .song_info import SongInfo
 from .config import config
+from .display_model import DisplayModel
 
 
 class MainWindow(QtWidgets.QWidget):
@@ -18,6 +19,9 @@ class MainWindow(QtWidgets.QWidget):
         super().__init__()
         self.song_info = None
         self.current_transpose = 0
+
+        # Create display model - central source of truth for what to display
+        self.display_model = DisplayModel()
 
         self.scroller = TimeScroller()
 
@@ -40,10 +44,10 @@ class MainWindow(QtWidgets.QWidget):
         self.track_list = TrackList()
         self.left_splitter.addWidget(self.track_list)
 
-        self.view = View()
+        self.view = View(self.display_model)
         self.splitter.addWidget(self.view)
 
-        self.overview = Overview()
+        self.overview = Overview(self.display_model)
         self.layout.addWidget(self.overview, 1, 1, 1, 1)
         self.overview.setMaximumWidth(100)
 
@@ -58,6 +62,9 @@ class MainWindow(QtWidgets.QWidget):
         self.file_tree.file_double_clicked.connect(self.load)
         self.track_list.colors_changed.connect(self.update_track_colors)
         self.track_list.modes_changed.connect(self.update_track_modes)
+
+        # Connect display model to song changes
+        self.song_changed.connect(self.display_model.set_song)
 
         self.resize(1200, 800)
         self.left_splitter.setSizes([700, 100])
@@ -133,13 +140,12 @@ class MainWindow(QtWidgets.QWidget):
 
     def update_track_colors(self):
         self.track_colors = self.track_list.track_colors()
-        self.view.set_track_colors(self.track_colors)
-        self.overview.set_track_colors(self.track_colors)
+        self.display_model.set_track_colors(self.track_colors)
 
     def update_track_modes(self):
         self.track_modes = self.track_list.track_modes()
         self.scroller.set_track_modes(self.track_modes)
-        self.view.set_track_modes(self.track_modes)
+        self.display_model.set_track_modes(self.track_modes)
 
         # Save track modes to config
         if self.song_info:

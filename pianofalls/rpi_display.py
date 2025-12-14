@@ -119,6 +119,7 @@ class RPiRenderer:
     def __init__(self, mainwindow, sender):
         self.mainwindow = mainwindow
         self.song = None
+        self.display_model = mainwindow.display_model
         self.current_time = 0
         self.zoom = 1
         self.time_range = (0, 1)
@@ -145,49 +146,47 @@ class RPiRenderer:
         self.time_range = time_range
 
     def render_frame(self, time_range):
-        track_colors = self.mainwindow.track_list.track_colors()
         rows, cols = config['rpi_display']['resolution']
         first_col, last_col = config['rpi_display']['bounds']
         used_cols = last_col - first_col
-        all_keyspec = Keyboard.key_spec()
         frame = np.zeros((rows, cols, 3), dtype='uint8')
-        
-        events = self.song.get_events_active_in_range(time_range)
+
+        display_events = self.display_model.get_visible_events(time_range)
+
         row_scale = rows / (time_range[1] - time_range[0])  # pixels per second
         col_scale = used_cols / 88  # pixels per white key
 
         # how many pixels have we moved to account for start of time range (float)
         y_pixel_offset = time_range[0] * row_scale
 
-        # print("==========================")
-
-        for event in events:
-            if isinstance(event, Barline):
-                start_y_pixel = y_pixel_offset + frame.shape[0] - (row_scale * event.start_time)
+        # Render barlines first
+        for display_evt in display_events:
+            if isinstance(display_evt.event, Barline):
+                start_y_pixel = y_pixel_offset + frame.shape[0] - (row_scale * display_evt.y_start)
                 draw_interpolated_line(frame, start_y_pixel-1, 0, frame.shape[1], np.array([4, 4, 4]))
 
-        for event in events:        
-            if not isinstance(event, Note):
+        # Render notes
+        for display_evt in display_events:
+            if not isinstance(display_evt.event, Note):
                 continue
-            note = event
-            try:
-                keyspec = all_keyspec[note.pitch.key]
-            except IndexError:
-                continue
-            color = track_colors.get(note.track, (100, 100, 100))
-            start_y_pixel = y_pixel_offset + frame.shape[0] - (row_scale * note.start_time)
-            stop_y_pixel = start_y_pixel - max(1, row_scale * note.duration)
 
-            w = int(keyspec['width'] * col_scale)
-            x1 = first_col + int(keyspec['x_pos'] * col_scale)
+            # Use pre-computed geometry and color from DisplayEvent
+            color = np.array(display_evt.color)
+            start_y_pixel = y_pixel_offset + frame.shape[0] - (row_scale * display_evt.y_start)
+            stop_y_pixel = start_y_pixel - max(1, row_scale * display_evt.height)
+
+            w = int(display_evt.width * col_scale)
+            x1 = first_col + int(display_evt.x_pos * col_scale)
             x2 = x1 + w
-            # print(note, start_y_pixel, stop_y_pixel)
-            draw_interpolated_box(frame, stop_y_pixel, start_y_pixel, x1, x2, (np.array(color)*0.25, np.array(color)))
-            if not event.played:
+
+            draw_interpolated_box(frame, stop_y_pixel, start_y_pixel, x1, x2, (color*0.25, color))
+
+            # Get played state from the source event (not cached in DisplayEvent)
+            if not display_evt.event.played:
                 draw_interpolated_line(frame, start_y_pixel-1, x1, x2, np.array([255, 255, 255]))
 
         return frame
-    
+
     def render_loop(self):
         last_time = time.perf_counter()
         while True:

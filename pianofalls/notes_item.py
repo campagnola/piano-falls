@@ -4,14 +4,14 @@ from .keyboard import Keyboard
 
 
 class NotesItem(GraphicsItemGroup):
-    def __init__(self):
+    def __init__(self, display_model):
         super().__init__()
         self._bounds = QtCore.QRectF()
         self.notes = []
-        self.song_notes = []  # Store the original notes list from the song
 
-        self.track_colors = {}
-        self.track_modes = {}
+        # Display model (central source of truth)
+        self.display_model = display_model
+        display_model.display_events_changed.connect(self._rebuild_notes)
 
         self.key_spec = Keyboard.key_spec()
         self.bars = [QtWidgets.QGraphicsLineItem(self.key_spec[0]['x_pos'], 0, self.key_spec[-1]['x_pos'] + self.key_spec[-1]['width'], 0)]
@@ -19,24 +19,8 @@ class NotesItem(GraphicsItemGroup):
             item.setPen(Pen((100, 100, 100)))
             self.addToGroup(item)
 
-    def set_track_colors(self, track_colors):
-        self.track_colors = track_colors
-        for note_item in self.notes:
-            note_item.set_color(self.get_color(note_item.track_key))
-
-    def set_track_modes(self, track_modes):
-        self.track_modes = track_modes
-        # Regenerate notes with the new track modes
-        if self.song_notes:
-            self.set_notes(self.song_notes)
-
-    def get_color(self, track_key):
-        return self.track_colors.get(track_key, (100, 100, 100))
-
-    def set_notes(self, notes):
-        # Store the original notes list for regeneration
-        self.song_notes = notes
-
+    def _rebuild_notes(self):
+        """Rebuild notes from display model."""
         bounds = QtCore.QRectF()
 
         # Clear any existing notes
@@ -44,30 +28,25 @@ class NotesItem(GraphicsItemGroup):
             self.scene().removeItem(note_item)
         self.notes.clear()
 
-        # Create new notes
-        for i, note in enumerate(notes):
-            if note.pitch.key < 0 or note.pitch.key >= len(self.key_spec):
+        # Get visible events from display model
+        visible_events = self.display_model.get_visible_events()
+
+        # Create NoteItems from DisplayEvents
+        for i, display_evt in enumerate(visible_events):
+            # Only render Note events (skip Barlines, etc.)
+            from .song import Note
+            if not isinstance(display_evt.event, Note):
                 continue
 
-            track_key = (note.part, note.staff)
-            track_mode = self.track_modes.get(track_key, 'player')
-
-            # Skip notes from hidden tracks
-            if track_mode == 'hidden':
-                continue
-
-            keyspec = self.key_spec[note.pitch.key]
-            color = self.get_color(track_key)
-
-            # Ensure minimum note height for Qt display (5px minimum)
-            # The waterfall transform scales Y by -6 * zoom_factor, so we need
-            # duration * 6 * zoom_factor >= 5 pixels
-            # For zoom_factor = 1.0, this means duration >= 5/6 ≈ 0.833 seconds
-            # But zoom can vary, so we'll use a conservative minimum
-            min_duration = max(note.duration, 0.1)  # 0.1 seconds minimum
-
-            note_item = NoteItem(x=keyspec['x_pos'], y=note.start_time, w=keyspec['width'], h=min_duration,
-                                 color=color, z=i, note=note)
+            note_item = NoteItem(
+                x=display_evt.x_pos,
+                y=display_evt.y_start,
+                w=display_evt.width,
+                h=display_evt.height,
+                color=display_evt.color,
+                z=i,
+                note=display_evt.event
+            )
             self.notes.append(note_item)
             self.addToGroup(note_item)
             bounds = bounds.united(note_item.boundingRect())

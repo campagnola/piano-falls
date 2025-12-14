@@ -5,11 +5,11 @@ from .notes_item import NotesItem
 class Overview(QtWidgets.QGraphicsView):
     clicked = QtCore.Signal(object)
 
-    def __init__(self):
+    def __init__(self, display_model):
         super().__init__()
 
         self.setBackgroundRole(QtGui.QPalette.ColorRole.NoRole)
-        self.setBackgroundBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0)))        
+        self.setBackgroundBrush(QtGui.QBrush(QtGui.QColor(0, 0, 0)))
         # self.setFocusPolicy(QtCore.Qt.FocusPolicy.StrongFocus)
         self.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -28,7 +28,7 @@ class Overview(QtWidgets.QGraphicsView):
         self.group.setTransform(tr)
         self._scene.addItem(self.group)
 
-        self.notes_item = NotesItem()
+        self.notes_item = NotesItem(display_model)
         self.notes_item.setParentItem(self.group)
 
         self.time_line = QtWidgets.QGraphicsLineItem()
@@ -37,13 +37,8 @@ class Overview(QtWidgets.QGraphicsView):
         self.time_line.setPen(pen)
         self.time_line.setParentItem(self.group)
 
-    def set_track_colors(self, track_colors):
-        self.notes_item.set_track_colors(track_colors)
-
     def set_song(self, song_info):
         """Set the song from a SongInfo instance."""
-        song = song_info.get_song()
-        self.notes_item.set_notes(song.notes)
         self.resizeEvent()
 
     def set_time(self, time):

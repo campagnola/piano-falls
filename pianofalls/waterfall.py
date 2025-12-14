@@ -4,14 +4,13 @@ from .notes_item import NotesItem
 
 
 class Waterfall(QtWidgets.QGraphicsWidget):
-    def __init__(self):
+    def __init__(self, display_model):
         super().__init__()
         self.setFlag(self.GraphicsItemFlag.ItemClipsChildrenToShape)
 
         self.group = GraphicsItemGroup(self)
 
-        self.song = None
-        self.notes_item = NotesItem()
+        self.notes_item = NotesItem(display_model)
         self.group.addToGroup(self.notes_item)
 
         self.current_time = 0.0
@@ -24,16 +23,6 @@ class Waterfall(QtWidgets.QGraphicsWidget):
         self.update_timer.start(16)
 
         self.update_transform()
-
-    def set_track_colors(self, track_colors):
-        self.notes_item.set_track_colors(track_colors)
-
-    def set_track_modes(self, track_modes):
-        self.notes_item.set_track_modes(track_modes)
-
-    def set_song(self, song: Song):
-        self.song = song
-        self.notes_item.set_notes(song.notes)
 
     def set_time(self, time):
         self.requested_time = time

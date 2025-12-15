@@ -1,5 +1,5 @@
 import sys
-from pianofalls.midi import MidiInput
+from pianofalls.midi import MidiInput, MidiOutput
 from pianofalls.qt import QtWidgets
 from pianofalls.mainwindow import MainWindow
 from pianofalls.rpi_display import GraphicsViewUpdateWatcher, FrameSender, RPiRenderer
@@ -40,6 +40,25 @@ if __name__ == '__main__':
     print(f"Selected MIDI port {port_name}")
     midi_input = MidiInput(port_name)
 
+    # Setup MIDI output for autoplay
+    try:
+        output_ports = MidiOutput.get_available_ports()
+        if len(output_ports) > 0:
+            # Auto-select first output port, or prefer synthesizer/wavetable
+            output_port_name = output_ports[0]
+            for port in output_ports:
+                if 'synthesizer' in port.lower() or 'wavetable' in port.lower():
+                    output_port_name = port
+                    break
+
+            print(f"Selected MIDI output port: {output_port_name}")
+            midi_output = MidiOutput(output_port_name)
+        else:
+            print("No MIDI output ports available - autoplay will not produce sound")
+            midi_output = None
+    except Exception as e:
+        print(f"Error initializing MIDI output: {e}")
+        midi_output = None
 
     app = QtWidgets.QApplication([])
     w = MainWindow()
@@ -56,6 +75,9 @@ if __name__ == '__main__':
 
     if midi_input is not None:
         w.connect_midi_input(midi_input)
+
+    if midi_output is not None:
+        w.connect_midi_output(midi_output)
 
     if len(sys.argv) > 1:
         w.load(sys.argv[1])

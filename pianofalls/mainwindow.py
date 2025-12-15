@@ -57,6 +57,7 @@ class MainWindow(QtWidgets.QWidget):
         self.ctrl_panel.speed_changed.connect(self.scroller.set_scroll_speed)
         self.ctrl_panel.zoom_changed.connect(self.view.waterfall.set_zoom)
         self.ctrl_panel.transpose_changed.connect(self.on_transpose_changed)
+        self.ctrl_panel.autoplay_volume_changed.connect(self.scroller.set_autoplay_volume)
         self.view.wheel_event.connect(self.view_wheel_event)
         self.overview.clicked.connect(self.scroller.set_time)
         self.file_tree.file_double_clicked.connect(self.load)
@@ -121,6 +122,10 @@ class MainWindow(QtWidgets.QWidget):
     def connect_midi_input(self, midi_input):
         self.view.connect_midi_input(midi_input)
         self.scroller.connect_midi_input(midi_input)
+
+    def connect_midi_output(self, midi_output):
+        """Connect MIDI output to scroller for autoplay"""
+        self.scroller.connect_midi_output(midi_output)
 
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Equal:

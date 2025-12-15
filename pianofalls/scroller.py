@@ -155,22 +155,29 @@ class WaitScrollMode(ScrollMode):
     """Wait for the next note to be played before scrolling"""
     def __init__(self, *args, **kwargs):
         self.next_note_index = 0
+        self.next_autoplay_check_index = 0  # Track next note to check for autoplay timing
         self.early_key_time = 1.0  # seconds before a note is due to be played where a key press will count as a hit
         self.track_modes = {}  # Dictionary mapping track to mode
 
         # Autoplay settings
         self.midi_output = None
         self.autoplay_volume = 1.0  # 0.0-1.0 scale factor
+        self.active_autoplay_notes = {}  # Map note_id -> note object for fast lookup
 
         super().__init__(*args, **kwargs)
         
     def set_track_modes(self, track_modes):
         """Set the track modes for this scroll mode"""
         # Stop notes that might be from tracks changing away from autoplay
-        if self.midi_output is not None:
-            self.midi_output.stop_all()
+        self.stop_all_midi()
         self.track_modes = track_modes
         self.reset_future_notes_played()
+
+    def stop_all_midi(self):
+        """Stop all active MIDI notes"""
+        if self.midi_output is not None:
+            self.midi_output.stop_all()
+        self.active_autoplay_notes = {}
 
     def set_midi_output(self, midi_output):
         """Set MIDI output instance"""
@@ -182,10 +189,10 @@ class WaitScrollMode(ScrollMode):
 
     def set_song(self, song):
         # Stop notes from previous song
-        if self.midi_output is not None:
-            self.midi_output.stop_all()
+        self.stop_all_midi()
         super().set_song(song)
         self.next_note_index = 0
+        self.next_autoplay_check_index = 0
         if song is None:
             return
         # mark all notes as unplayed
@@ -193,8 +200,7 @@ class WaitScrollMode(ScrollMode):
 
     def set_time(self, new_time):
         # Stop active notes before time jump
-        if self.midi_output is not None:
-            self.midi_output.stop_all()
+        self.stop_all_midi()
         super().set_time(new_time)
         self.reset_future_notes_played()
     
@@ -203,97 +209,15 @@ class WaitScrollMode(ScrollMode):
         Also sets next_note_index to the first note after current time.
         """
         self.next_note_index = self.song.index_of_note_starting_at(self.scroller.target_time)
+        self.next_autoplay_check_index = self.next_note_index
 
         # mark next event + all following events as unplayed, but only for 'player' tracks
         for i, note in enumerate(self.song.notes):
             track_key = (note.part, note.staff)
             track_mode = self.track_modes.get(track_key, 'player')  # default to 'player' mode; saved modes may not hve been loaded yet
 
-            if i < self.next_note_index:
-                # Past notes are always marked as played
-                note.played = True
-            elif track_mode == 'player':
-                # Future notes in 'player' tracks are marked as unplayed
-                note.played = False
-            else:
-                # Future notes in non-player tracks (autoplay, visual only, hidden) are marked as played
-                note.played = True
-
-    def _can_emit_autoplay_note(self, autoplay_note, current_time):
-        """Check if autoplay note can be emitted.
-
-        Returns False if there are unplayed player notes at the same time.
-        """
-        # Find all notes at same start time (within 10ms tolerance)
-        same_time_notes = [
-            n for n in self.song.notes
-            if abs(n.start_time - autoplay_note.start_time) < 0.01
-        ]
-
-        # Check if any player notes are unplayed
-        for note in same_time_notes:
-            track_key = (note.part, note.staff)
-            track_mode = self.track_modes.get(track_key, 'player')
-
-            if track_mode == 'player' and not note.played:
-                # Player note not played yet - don't emit autoplay
-                return False
-
-        return True
-
-    def _check_autoplay_note_ons(self, current_time):
-        """Check for autoplay notes that should start at current_time"""
-        if self.midi_output is None or self.song is None:
-            return
-
-        # Scan notes starting near current_time (within 3ms window)
-        for note in self.song.notes:
-            # Skip if already active
-            if id(note) in self.midi_output.active_notes:
-                continue
-
-            # Skip if not at start time yet (notes are sorted)
-            if note.start_time > current_time + 0.003:
-                break
-
-            # Skip if already past (more than 3ms ago)
-            if note.start_time < current_time - 0.003:
-                continue
-
-            # Check if autoplay track
-            track_key = (note.part, note.staff)
-            track_mode = self.track_modes.get(track_key, 'player')
-
-            if track_mode == 'autoplay':
-                # Check if player notes at same time are all played
-                if self._can_emit_autoplay_note(note, current_time):
-                    self.midi_output.note_on(note, self.autoplay_volume)
-
-    def _check_autoplay_note_offs(self, current_time):
-        """Check for autoplay notes that should end at current_time"""
-        if self.midi_output is None or self.song is None:
-            return
-
-        # Check active notes for those that should end
-        to_stop = []
-        for note_id in list(self.midi_output.active_notes.keys()):
-            # Find the note object in the song
-            note = None
-            for n in self.song.notes:
-                if id(n) == note_id:
-                    note = n
-                    break
-
-            if note is None:
-                continue
-
-            end_time = note.start_time + note.duration
-            if end_time <= current_time:
-                to_stop.append(note)
-
-        # Stop notes that have ended
-        for note in to_stop:
-            self.midi_output.note_off(note)
+            # mark note as unplayed if it's in a 'player' track and starts at or after the current time
+            note.played = (i < self.next_note_index) or (track_mode != 'player')
 
     def update(self, current_time, dt, scroll_speed):
         # check for recent midi input
@@ -319,24 +243,44 @@ class WaitScrollMode(ScrollMode):
                         note.played = True
                         matched_time = note.start_time
 
-        # Check for autoplay events
-        self._check_autoplay_note_ons(current_time)
-        self._check_autoplay_note_offs(current_time)
-
         # check if we can advance to the next note
         for i in range(self.next_note_index, len(self.song)):
             if self.song.notes[i].played:
                 self.next_note_index = i + 1
             else:
                 break
-        
+
         if self.next_note_index >= len(self.song):
             max_time = self.song.end_time
         else:
             max_time = self.song.notes[self.next_note_index].start_time
-        
+
         desired_time = current_time + dt * scroll_speed
-        return min(desired_time, max_time)
+        new_time = min(desired_time, max_time)
+
+        # Handle autoplay notes
+        if self.midi_output is not None:
+            # Play autoplay notes whose start_time has been _passed_ (not just reached, since we might pause waiting for the player)
+            while (self.next_autoplay_check_index < len(self.song.notes) and
+                   self.song.notes[self.next_autoplay_check_index].start_time < new_time):
+                note = self.song.notes[self.next_autoplay_check_index]
+                track_key = (note.part, note.staff)
+                track_mode = self.track_modes.get(track_key, 'player')
+
+                if track_mode == 'autoplay':
+                    self.midi_output.note_on(note, self.autoplay_volume)
+                    self.active_autoplay_notes[id(note)] = note
+
+                self.next_autoplay_check_index += 1
+
+            # Stop autoplay notes whose end_time has been reached
+            for note_id, note in list(self.active_autoplay_notes.items()):
+                end_time = note.start_time + note.duration
+                if end_time <= new_time:
+                    self.midi_output.note_off(note)
+                    self.active_autoplay_notes.pop(id(note), None)
+
+        return new_time
 
 
 class FollowScrollMode(ScrollMode):

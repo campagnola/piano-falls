@@ -74,6 +74,8 @@ class MainWindow(QtWidgets.QWidget):
         self.view.focusWidget()
         self.overview.resizeEvent()
 
+        self.ctrl_panel.load_config()
+
     def load(self, filename):
         """Load a MIDI or MusicXML file and display it on the waterfall"""
         filename = os.path.expanduser(filename)
@@ -115,7 +117,12 @@ class MainWindow(QtWidgets.QWidget):
         self.track_list.restore_modes(song_info)
 
         self.update_track_colors()
-        self.update_track_modes()
+
+        # Apply restored track modes to scroller and display (but don't save)
+        self.track_modes = self.track_list.track_modes()
+        self.scroller.set_track_modes(self.track_modes)
+        self.display_model.set_track_modes(self.track_modes)
+
         self.view.focusWidget()
         self.song_changed.emit(song_info.get_song())
 
@@ -154,7 +161,8 @@ class MainWindow(QtWidgets.QWidget):
 
         # Save track modes to config
         if self.song_info:
-            self.song_info.update_settings(track_modes=self.track_list.serialize_modes())
+            serialized = self.track_list.serialize_modes()
+            self.song_info.update_settings(track_modes=serialized)
 
     def _apply_transpose_to_song(self, song, semitones):
         """Apply transpose to all notes by modifying Pitch objects"""

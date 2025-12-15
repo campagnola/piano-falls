@@ -68,11 +68,22 @@ class TrackList(QtWidgets.QWidget):
         """
         Serialize track modes to a JSON-compatible format.
 
-        Returns a list of [part_name, staff, mode] for each track.
+        Returns a list of [track_index, mode] for each track.
         This format is used for saving to the configuration file.
         """
+        if not hasattr(self, 'song_info') or not self.song_info:
+            return []
+
+        song = self.song_info.get_song()
         modes = self.track_modes()
-        return [[part.name, staff, mode] for (part, staff), mode in modes.items()]
+
+        # Map each track tuple to its index in song.tracks
+        serialized = []
+        for i, track in enumerate(song.tracks):
+            if track in modes:
+                serialized.append([i, modes[track]])
+
+        return serialized
 
     def restore_modes(self, song_info):
         """
@@ -87,14 +98,11 @@ class TrackList(QtWidgets.QWidget):
 
         song = song_info.get_song()
 
-        # Convert from list of [part_name, staff, mode] to {track: mode} dict
+        # Convert from list of [track_index, mode] to {track: mode} dict
         track_modes = {}
-        for part_name, staff, mode in serialized_modes:
-            # Find the matching track by part name and staff
-            for track in song.tracks:
-                if track[0] and track[0].name == part_name and track[1] == staff:
-                    track_modes[track] = mode
-                    break
+        for track_index, mode in serialized_modes:
+            if 0 <= track_index < len(song.tracks):
+                track_modes[song.tracks[track_index]] = mode
 
         self.set_track_modes(track_modes)
     

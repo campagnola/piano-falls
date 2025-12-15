@@ -1,5 +1,6 @@
 import time
 import mido
+import atexit
 from .qt import QtCore
 from .song import Pitch, Song, Note, Part
 
@@ -37,6 +38,7 @@ class MidiOutput:
         """Initialize MIDI output on specified port"""
         self.port = mido.open_output(port)
         self.active_notes = {}  # Map from note object to midi_note number
+        atexit.register(self.stop_all)
 
     def note_on(self, note, volume):
         """Emit MIDI note-on with volume scaling.
@@ -190,3 +192,4 @@ class MidiPart(Part):
             track_name = f'MIDI track {track_n}'
         Part.__init__(self, name=track_name)
         self.midi_track = midi_track
+        self.track_n = track_n

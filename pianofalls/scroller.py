@@ -48,7 +48,7 @@ class TimeScroller(QtCore.QObject):
             'tempo': TempoScrollMode,
             'wait': WaitScrollMode,
             'follow': FollowScrollMode,
-        }[mode](self.song)
+        }[mode](self)
 
     def set_track_modes(self, track_modes):
         """Set the track modes for the current scroll mode"""
@@ -116,8 +116,9 @@ class TimeScroller(QtCore.QObject):
 
 
 class ScrollMode:
-    def __init__(self, song=None):
-        self.set_song(song)
+    def __init__(self, scroller):
+        self.scroller = scroller
+        self.set_song(self.scroller.song)
         self.incoming_midi = []
 
     def on_midi_message(self, msg):
@@ -127,7 +128,7 @@ class ScrollMode:
     def set_song(self, song):
         self.song = song
 
-    def set_time(self, time):
+    def set_time(self, new_time):
         """Called when the scroller is set to a new time"""
         pass
 
@@ -160,7 +161,7 @@ class WaitScrollMode(ScrollMode):
         # Autoplay settings
         self.midi_output = None
         self.autoplay_volume = 1.0  # 0.0-1.0 scale factor
-        
+
         super().__init__(*args, **kwargs)
         
     def set_track_modes(self, track_modes):
@@ -169,7 +170,7 @@ class WaitScrollMode(ScrollMode):
         if self.midi_output is not None:
             self.midi_output.stop_all()
         self.track_modes = track_modes
-        self.update_note_state()
+        self.reset_future_notes_played()
 
     def set_midi_output(self, midi_output):
         """Set MIDI output instance"""
@@ -190,19 +191,23 @@ class WaitScrollMode(ScrollMode):
         # mark all notes as unplayed
         self.set_time(0)
 
-    def set_time(self, time):
+    def set_time(self, new_time):
         # Stop active notes before time jump
         if self.midi_output is not None:
             self.midi_output.stop_all()
-        super().set_time(time)
-        self.next_note_index = self.song.index_of_note_starting_at(time)
-        self.update_note_state()
-                
-    def update_note_state(self):
+        super().set_time(new_time)
+        self.reset_future_notes_played()
+    
+    def reset_future_notes_played(self):
+        """Reset played state of future notes based on current time and track modes
+        Also sets next_note_index to the first note after current time.
+        """
+        self.next_note_index = self.song.index_of_note_starting_at(self.scroller.target_time)
+
         # mark next event + all following events as unplayed, but only for 'player' tracks
         for i, note in enumerate(self.song.notes):
             track_key = (note.part, note.staff)
-            track_mode = self.track_modes.get(track_key, 'player')  # Default to 'player' if not set
+            track_mode = self.track_modes.get(track_key, 'player')  # default to 'player' mode; saved modes may not hve been loaded yet
 
             if i < self.next_note_index:
                 # Past notes are always marked as played
@@ -290,7 +295,7 @@ class WaitScrollMode(ScrollMode):
         for note in to_stop:
             self.midi_output.note_off(note)
 
-    def update(self, current_time, dt, scroll_speed):        
+    def update(self, current_time, dt, scroll_speed):
         # check for recent midi input
         recent_messages = self.check_midi()
         recent_presses = [msg for msg in recent_messages if msg.type == 'note_on']
@@ -313,25 +318,18 @@ class WaitScrollMode(ScrollMode):
                     if matched_time is None or matched_time == note.start_time:
                         note.played = True
                         matched_time = note.start_time
-                        print(f"DEBUG: Note played - start_time={note.start_time}, pitch={note.pitch}, duration={note.duration}")
 
         # Check for autoplay events
         self._check_autoplay_note_ons(current_time)
         self._check_autoplay_note_offs(current_time)
 
         # check if we can advance to the next note
-        old_next_note_index = self.next_note_index
         for i in range(self.next_note_index, len(self.song)):
             if self.song.notes[i].played:
                 self.next_note_index = i + 1
             else:
                 break
         
-        # Debug print when we advance to a new note
-        if self.next_note_index != old_next_note_index and self.next_note_index < len(self.song):
-            next_note = self.song.notes[self.next_note_index]
-            print(f"DEBUG: Waiting for next note - start_time={next_note.start_time}, pitch={next_note.pitch}, duration={next_note.duration}")
-
         if self.next_note_index >= len(self.song):
             max_time = self.song.end_time
         else:

@@ -97,10 +97,35 @@ class Song:
     def tracks(self):
         """For musicxml, a track is the combination of part and staff. For midi,
         tracks and parts are the same thing.
+
+        Returns tracks sorted by:
+        - For MIDI: track number
+        - For MusicXML: part ID, then staff number
         """
         if self._tracks is None:
-            self._tracks = set([(getattr(e, 'part', None), getattr(e, 'staff', None)) for e in self.events])
-            
+            unique_tracks = list(set([(getattr(e, 'part', None), getattr(e, 'staff', None)) for e in self.events]))
+
+            def sort_key(track):
+                part, staff = track
+                # Extract part sort key
+                if hasattr(part, 'track_n'):
+                    # MidiPart - sort by track number
+                    part_key = part.track_n
+                elif hasattr(part, 'info') and 'id' in part.info:
+                    # MusicXMLPart - sort by part ID
+                    part_key = part.info['id']
+                elif part is not None:
+                    # Fallback to part name
+                    part_key = part.name
+                else:
+                    part_key = ''
+
+                # Staff number (None becomes 0 for sorting)
+                staff_key = staff if staff is not None else 0
+
+                return (part_key, staff_key)
+
+            self._tracks = sorted(unique_tracks, key=sort_key)
         return self._tracks
 
     @property

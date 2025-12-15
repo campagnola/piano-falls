@@ -11,9 +11,10 @@ else:
 default_config = {
     "search_paths": ["~/Downloads"],
     "songs": [],
-    "rpi_display": None,  
-        # {"ip_address": "10.10.10.10", "port": 1337, "udp": False, 
+    "rpi_display": None,
+        # {"ip_address": "10.10.10.10", "port": 1337, "udp": False,
         #  "resolution": [64, 512], "bounds": [10, 501]},
+    "autoplay_volume": 80,  # 0-100 percentage
 }
 
 default_song_config = {
@@ -25,7 +26,6 @@ default_song_config = {
     "transpose": 0,
     "loops": [],
     "track_modes": [],  # List of [part_name, staff, mode] tuples
-    "autoplay_volume": 80,  # 0-100 percentage
 }
 
 
@@ -96,7 +96,7 @@ class Config:
 
         return settings
 
-    def update_song_settings(self, filename, speed=None, zoom=None, loops=None, transpose=None, track_modes=None, autoplay_volume=None):
+    def update_song_settings(self, filename, speed=None, zoom=None, loops=None, transpose=None, track_modes=None):
         """Update song settings by filename. Creates new entry if not found."""
         sha = self.get_sha(filename)
 
@@ -123,8 +123,6 @@ class Config:
             existing_song['transpose'] = transpose
         if track_modes is not None:
             existing_song['track_modes'] = track_modes
-        if autoplay_volume is not None:
-            existing_song['autoplay_volume'] = autoplay_volume
 
         self.save()
 

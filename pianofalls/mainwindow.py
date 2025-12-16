@@ -58,6 +58,7 @@ class MainWindow(QtWidgets.QWidget):
         self.ctrl_panel.zoom_changed.connect(self.view.waterfall.set_zoom)
         self.ctrl_panel.transpose_changed.connect(self.on_transpose_changed)
         self.ctrl_panel.autoplay_volume_changed.connect(self.scroller.set_autoplay_volume)
+        self.ctrl_panel.scroll_mode_changed.connect(self.scroller.set_scroll_mode)
         self.view.wheel_event.connect(self.view_wheel_event)
         self.overview.clicked.connect(self.scroller.set_time)
         self.file_tree.file_double_clicked.connect(self.load)

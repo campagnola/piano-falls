@@ -37,9 +37,26 @@ class MainWindow(QtWidgets.QWidget):
         self.left_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         self.splitter.addWidget(self.left_splitter)
 
+        # Create container for search bar and file tree
+        file_tree_container = QtWidgets.QWidget()
+        file_tree_layout = QtWidgets.QVBoxLayout()
+        file_tree_layout.setContentsMargins(0, 0, 0, 0)
+        file_tree_layout.setSpacing(2)
+
+        # Add search bar
+        self.file_search = QtWidgets.QLineEdit()
+        self.file_search.setPlaceholderText('Search files...')
+        self.file_search.setClearButtonEnabled(True)
+        self.file_search.textChanged.connect(self._on_search_changed)
+        file_tree_layout.addWidget(self.file_search)
+
+        # Add file tree
         self.file_tree = FileTree()
         self.file_tree.set_roots(config['search_paths'])
-        self.left_splitter.addWidget(self.file_tree)
+        file_tree_layout.addWidget(self.file_tree)
+
+        file_tree_container.setLayout(file_tree_layout)
+        self.left_splitter.addWidget(file_tree_container)
 
         self.song_info_panel = SongInfoPanel()
         self.left_splitter.addWidget(self.song_info_panel)
@@ -76,6 +93,10 @@ class MainWindow(QtWidgets.QWidget):
         self.overview.resizeEvent()
 
         self.ctrl_panel.load_config()
+
+    def _on_search_changed(self, text):
+        """Handle search text changes."""
+        self.file_tree.search(text)
 
     def load(self, filename):
         """Load a MIDI or MusicXML file and display it on the waterfall"""

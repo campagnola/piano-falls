@@ -152,12 +152,23 @@ class FileTree(QtWidgets.QTreeWidget):
         self._remove_item(item)
 
     def _remove_item(self, item):
+        # Remove item and all its descendants from the dictionary
+        if isinstance(item, FileTreeItem):
+            self._unregister_item_recursive(item)
         parent = item.parent()
         if parent is None:
             index = self.indexOfTopLevelItem(item)
             self.takeTopLevelItem(index)
         else:
             parent.removeChild(item)
+
+    def _unregister_item_recursive(self, item):
+        """Remove item and all its children from the class dictionary."""
+        if isinstance(item, FileTreeItem):
+            FileTreeItem._all_items.pop(item.path, None)
+            for index in range(item.childCount()):
+                child = item.child(index)
+                self._unregister_item_recursive(child)
 
     def _update_paths_after_move(self, item, old_path, new_path, old_was_directory):
         """Refresh tree item text/paths and sync metadata for a move or rename."""
@@ -310,7 +321,75 @@ class FileTree(QtWidgets.QTreeWidget):
             current = current.parent()
         return False
 
+    def search(self, search_text):
+        """
+        Filter the tree to show only items matching the search text.
+
+        Uses os.walk() to find all matching files across the entire search paths,
+        then lazy-loads folders as needed and shows/hides items accordingly.
+        """
+        search_text = search_text.strip().lower()
+
+        if not search_text:
+            # Show all items
+            for item in self._iter_items():
+                item.setHidden(False)
+            return
+
+        # Step 1: Find all matching files using os.walk()
+        matching_paths = set()
+        for i in range(self.topLevelItemCount()):
+            root_item = self.topLevelItem(i)
+            if isinstance(root_item, FileTreeItem) and root_item.path.is_dir():
+                for dirpath, dirnames, filenames in os.walk(root_item.path):
+                    for filename in filenames:
+                        if filename.lower().endswith(('.mid', '.midi', '.mxl', '.xml', '.musicxml')):
+                            if search_text in filename.lower():
+                                file_path = pathlib.Path(dirpath) / filename
+                                matching_paths.add(file_path)
+                                # Add all parent directories to matching paths
+                                parent = file_path.parent
+                                while parent != root_item.path.parent:
+                                    matching_paths.add(parent)
+                                    parent = parent.parent
+
+        # Step 2: Lazy-load and show/hide items
+        self._filter_tree(matching_paths)
+
+    def _filter_tree(self, matching_paths):
+        """Hide/show items based on matching_paths set."""
+        for item in self._iter_items():
+            if item.path in matching_paths:
+                # This item should be visible
+                item.setHidden(False)
+                # Ensure parent folders are loaded
+                if item.path.is_dir() and not item.children_loaded:
+                    item.load_children()
+            else:
+                # Check if this is a directory that contains matching descendants
+                is_ancestor = False
+                if item.path.is_dir():
+                    for matching_path in matching_paths:
+                        try:
+                            matching_path.relative_to(item.path)
+                            is_ancestor = True
+                            break
+                        except ValueError:
+                            continue
+
+                if is_ancestor:
+                    # This directory contains matches, show it and load children
+                    item.setHidden(False)
+                    if not item.children_loaded:
+                        item.load_children()
+                else:
+                    # No matches, hide this item
+                    item.setHidden(True)
+
 class FileTreeItem(QtWidgets.QTreeWidgetItem):
+    # Class-level dictionary mapping path -> FileTreeItem
+    _all_items = {}
+
     def __init__(self, path, file_watcher):
         super().__init__()
         self.path = path
@@ -324,6 +403,9 @@ class FileTreeItem(QtWidgets.QTreeWidgetItem):
             self.file_watcher.addPath(str(self.path))
         self.setFlags(flags)
         self.children_loaded = False
+
+        # Register this item in the class-level dictionary
+        FileTreeItem._all_items[self.path] = self
 
     def __lt__(self, other):
         if isinstance(other, FileTreeItem):
@@ -374,7 +456,11 @@ class FileTreeItem(QtWidgets.QTreeWidgetItem):
         self.load_children()
 
     def update_paths(self, old_path, new_path):
+        # Update the dictionary: remove old path and add new path
+        FileTreeItem._all_items.pop(old_path, None)
         self.path = new_path
+        FileTreeItem._all_items[new_path] = self
+
         self.setText(0, new_path.name)
         if new_path.is_dir():
             for index in range(self.childCount()):

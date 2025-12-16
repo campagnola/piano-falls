@@ -15,6 +15,7 @@ default_config = {
         # {"ip_address": "10.10.10.10", "port": 1337, "udp": False,
         #  "resolution": [64, 512], "bounds": [10, 501]},
     "autoplay_volume": 80,  # 0-100 percentage
+    "autoplay_volume_randomness": 10,  # 0-100 percentage of volume variation
     "scroll_mode": "wait",  # 'wait' or 'tempo'
 }
 

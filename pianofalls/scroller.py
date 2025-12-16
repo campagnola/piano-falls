@@ -1,7 +1,8 @@
 import queue
-import threading, math, time
+import threading, math, time, random
 from .qt import QtCore
 import atexit
+from .config import config
 
 
 class TimeScroller(QtCore.QObject):
@@ -143,6 +144,7 @@ class ScrollMode:
         # Autoplay settings
         self.midi_output = None
         self.autoplay_volume = 1.0  # 0.0-1.0 scale factor
+        self.autoplay_volume_randomness = config.data.get('autoplay_volume_randomness', 10) / 100.0  # 0.0-1.0 scale
         self.active_autoplay_notes = {}  # Map note_id -> note object for fast lookup
 
         self.set_song(self.scroller.song)
@@ -250,7 +252,11 @@ class ScrollMode:
             track_mode = self.track_modes.get(track_key, 'player')
 
             if track_mode == 'autoplay':
-                self.midi_output.note_on(note, self.autoplay_volume)
+                # Apply random volume variation
+                variation = random.uniform(-self.autoplay_volume_randomness, self.autoplay_volume_randomness)
+                randomized_volume = self.autoplay_volume * (1 + variation)
+                randomized_volume = max(0.0, min(1.0, randomized_volume))  # Clamp to valid range
+                self.midi_output.note_on(note, randomized_volume)
                 self.active_autoplay_notes[id(note)] = note
 
             self.next_autoplay_check_index += 1

@@ -6,7 +6,7 @@ from .view import View
 from .ctrl_panel import CtrlPanel
 from .scroller import TimeScroller
 from .file_tree import FileTree
-from .tracklist import TrackList
+from .song_info_panel import SongInfoPanel
 from .song_info import SongInfo
 from .config import config
 from .display_model import DisplayModel
@@ -41,8 +41,8 @@ class MainWindow(QtWidgets.QWidget):
         self.file_tree.set_roots(config['search_paths'])
         self.left_splitter.addWidget(self.file_tree)
 
-        self.track_list = TrackList()
-        self.left_splitter.addWidget(self.track_list)
+        self.song_info_panel = SongInfoPanel()
+        self.left_splitter.addWidget(self.song_info_panel)
 
         self.view = View(self.display_model)
         self.splitter.addWidget(self.view)
@@ -54,16 +54,16 @@ class MainWindow(QtWidgets.QWidget):
         self.setLayout(self.layout)
 
         self.scroller.current_time_changed.connect(self.time_changed)
-        self.ctrl_panel.speed_changed.connect(self.scroller.set_scroll_speed)
-        self.ctrl_panel.zoom_changed.connect(self.view.waterfall.set_zoom)
-        self.ctrl_panel.transpose_changed.connect(self.on_transpose_changed)
         self.ctrl_panel.autoplay_volume_changed.connect(self.scroller.set_autoplay_volume)
         self.ctrl_panel.scroll_mode_changed.connect(self.scroller.set_scroll_mode)
+        self.song_info_panel.speed_changed.connect(self.scroller.set_scroll_speed)
+        self.song_info_panel.zoom_changed.connect(self.view.waterfall.set_zoom)
+        self.song_info_panel.transpose_changed.connect(self.on_transpose_changed)
+        self.song_info_panel.colors_changed.connect(self.update_track_colors)
+        self.song_info_panel.modes_changed.connect(self.update_track_modes)
         self.view.wheel_event.connect(self.view_wheel_event)
         self.overview.clicked.connect(self.scroller.set_time)
         self.file_tree.file_double_clicked.connect(self.load)
-        self.track_list.colors_changed.connect(self.update_track_colors)
-        self.track_list.modes_changed.connect(self.update_track_modes)
 
         # Connect display model to song changes
         self.song_changed.connect(self.display_model.set_song)
@@ -109,18 +109,18 @@ class MainWindow(QtWidgets.QWidget):
         self.overview.set_song(song_info)
         self.view.set_song(song_info)
         self.scroller.set_song(song_info)
-        self.track_list.set_song(song_info)
+        self.song_info_panel.set_song(song_info)
 
         self.window().setWindowTitle(song_info.filename)
 
         # Load song-specific settings
-        self.ctrl_panel.load_song_settings(song_info)
-        self.track_list.restore_modes(song_info)
+        self.song_info_panel.load_song_settings(song_info)
+        self.song_info_panel.restore_modes(song_info)
 
         self.update_track_colors()
 
         # Apply restored track modes to scroller and display (but don't save)
-        self.track_modes = self.track_list.track_modes()
+        self.track_modes = self.song_info_panel.track_modes()
         self.scroller.set_track_modes(self.track_modes)
         self.display_model.set_track_modes(self.track_modes)
 
@@ -152,17 +152,17 @@ class MainWindow(QtWidgets.QWidget):
         self.overview.set_time(time)
 
     def update_track_colors(self):
-        self.track_colors = self.track_list.track_colors()
+        self.track_colors = self.song_info_panel.track_colors()
         self.display_model.set_track_colors(self.track_colors)
 
     def update_track_modes(self):
-        self.track_modes = self.track_list.track_modes()
+        self.track_modes = self.song_info_panel.track_modes()
         self.scroller.set_track_modes(self.track_modes)
         self.display_model.set_track_modes(self.track_modes)
 
         # Save track modes to config
         if self.song_info:
-            serialized = self.track_list.serialize_modes()
+            serialized = self.song_info_panel.serialize_modes()
             self.song_info.update_settings(track_modes=serialized)
 
     def _apply_transpose_to_song(self, song, semitones):

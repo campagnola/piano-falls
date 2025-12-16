@@ -18,19 +18,15 @@ class FileTree(QtWidgets.QTreeWidget):
         # allow sorting
         self.setSortingEnabled(True)
         self.itemChanged.connect(self.on_item_changed)
-        self.setDragEnabled(True)
-        self.setAcceptDrops(True)
-        self.setDropIndicatorShown(True)
-        self.setDefaultDropAction(QtCore.Qt.MoveAction)
-        self.setDragDropMode(QtWidgets.QAbstractItemView.DragDrop)
 
         self.rename_action = QtWidgets.QAction('Rename', self)
         self.delete_action = QtWidgets.QAction('Delete', self)
+        self.move_to_action = QtWidgets.QAction('Move to...', self)
         self.rename_action.triggered.connect(self.trigger_rename)
         self.delete_action.triggered.connect(self.trigger_delete)
 
-        self._drag_item = None
-        self._hidden_during_drag = []
+        self.file_watcher = QtCore.QFileSystemWatcher()
+        self.file_watcher.directoryChanged.connect(self._on_directory_changed)
 
     def on_item_double_clicked(self, item, column):
         if item.path.is_file():
@@ -45,7 +41,7 @@ class FileTree(QtWidgets.QTreeWidget):
         path = pathlib.Path(os.path.abspath(os.path.expanduser(root)))
         if not path.exists():
             return
-        item = FileTreeItem(path)
+        item = FileTreeItem(path, self.file_watcher)
         self.addTopLevelItem(item)
         item.setExpanded(True)
         self.resizeColumnToContents(0)
@@ -97,6 +93,12 @@ class FileTree(QtWidgets.QTreeWidget):
         menu = QtWidgets.QMenu(self)
         menu.addAction(self.rename_action)
         menu.addAction(self.delete_action)
+
+        # Add "Move to..." submenu with folder hierarchy
+        move_menu = self._build_move_to_menu(item)
+        if move_menu is not None:
+            menu.addMenu(move_menu)
+
         menu.exec(event.globalPos())
 
     def keyPressEvent(self, event):
@@ -207,128 +209,84 @@ class FileTree(QtWidgets.QTreeWidget):
         """Return True when the file suffix is one we manage metadata for."""
         return path.suffix.lower() in {'.mid', '.midi', '.mxl', '.xml', '.musicxml'}
 
-    def dragEnterEvent(self, event):
-        if self._drag_item is not None or event.source() is self:
-            event.acceptProposedAction()
-        else:
-            event.ignore()
+    def _on_directory_changed(self, dir_path):
+        """Handle filesystem changes by updating only the affected tree item."""
+        print(f"Directory changed: {dir_path}")
+        changed_path = pathlib.Path(dir_path)
 
-    def dragMoveEvent(self, event):
-        if self._drag_item is not None or event.source() is self:
-            event.acceptProposedAction()
-        else:
-            event.ignore()
+        # Find the tree item corresponding to this directory
+        for item in self._iter_items():
+            if item.path == changed_path:
+                # Reload just this item's children
+                item.reload_children()
+                break
 
-    def startDrag(self, supportedActions):
-        item = self.currentItem()
-        if not isinstance(item, FileTreeItem):
-            return
-        self._drag_item = item
-        self._apply_drag_visibility(hide=True)
-        try:
-            super().startDrag(supportedActions)
-        finally:
-            self._apply_drag_visibility(hide=False)
-            self._drag_item = None
+    def _build_move_to_menu(self, source_item):
+        """Build a hierarchical menu showing all valid destination folders."""
+        move_menu = QtWidgets.QMenu('Move to...', self)
 
-    def dropEvent(self, event):
-        if not isinstance(self._drag_item, FileTreeItem):
-            event.ignore()
-            return
+        def mk_move_callback(source_item, destination_path):
+            def callback():
+                self._perform_move(source_item, destination_path)
+            return callback
 
-        target_item = self._target_item_from_event(event)
-        if target_item is None:
-            event.ignore()
-            return
+        path_menus = {}
+        for i in range(self.topLevelItemCount()):
+            item = self.topLevelItem(i)
+            if isinstance(item, FileTreeItem) and item.path.is_dir():
+                for (dirpath, dirnames, filenames) in os.walk(item.path):
+                    parent_path, name = os.path.split(dirpath)
+                    parent_menu = path_menus.get(parent_path, move_menu)
+                    callback = mk_move_callback(source_item, pathlib.Path(dirpath))
+                    if len(dirnames) == 0:
+                        # Add folder as action (immediately move here)
+                        action = parent_menu.addAction(name)
+                        action.triggered.connect(callback)
+                    else:
+                        # folder has subfolders; make a tree and add action inside
+                        path_menus[dirpath] = submenu = parent_menu.addMenu(name)
+                        action = submenu.addAction(f'← Move here')
+                        action.triggered.connect(mk_move_callback(source_item, pathlib.Path(dirpath)))
+                        submenu.addSeparator()
 
-        target_dir_item = self._resolve_drop_directory(target_item)
-        if target_dir_item is None:
-            event.ignore()
-            return
+        return move_menu
 
-        if self._is_descendant(self._drag_item, target_dir_item):
-            QtWidgets.QMessageBox.warning(
-                self,
-                'Move Not Allowed',
-                'Cannot move a folder into one of its subfolders.'
-            )
-            event.ignore()
-            return
-
-        source_path = self._drag_item.path
+    def _perform_move(self, source_item, destination_path):
+        """Move source_item into destination_path folder."""
+        source_path = source_item.path
         source_was_directory = source_path.is_dir()
-        destination_path = target_dir_item.path / source_path.name
+        final_destination = destination_path / source_path.name
 
-        if destination_path == source_path:
-            event.ignore()
-            return
-
-        if destination_path.exists():
+        if final_destination.exists():
             QtWidgets.QMessageBox.warning(
                 self,
                 'Move Not Allowed',
-                f"'{destination_path.name}' already exists in the destination."
+                f"'{source_path.name}' already exists in the destination."
             )
-            event.ignore()
             return
 
         confirmation = QtWidgets.QMessageBox.question(
             self,
             'Confirm Move',
-            f"Move '{source_path.name}' to '{target_dir_item.path}'?",
+            f"Move '{source_path.name}' to '{destination_path}'?",
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.No,
         )
         if confirmation != QtWidgets.QMessageBox.Yes:
-            event.ignore()
             return
 
         try:
-            shutil.move(str(source_path), str(destination_path))
+            shutil.move(str(source_path), str(final_destination))
         except OSError as exc:
             QtWidgets.QMessageBox.critical(
                 self,
                 'Move Failed',
-                f"Could not move '{source_path}' to '{target_dir_item.path}'.\n{exc}"
+                f"Could not move '{source_path}' to '{destination_path}'.\n{exc}"
             )
-            event.ignore()
             return
 
-        moved_item = self._drag_item
-        self._remove_item(moved_item)
-        self._update_paths_after_move(moved_item, source_path, destination_path, source_was_directory)
-
-        if isinstance(target_dir_item, FileTreeItem):
-            target_dir_item.addChild(moved_item)
-            if not target_dir_item._children_loaded:
-                target_dir_item.load_children()
-            self.setCurrentItem(moved_item)
-        else:
-            new_item = FileTreeItem(destination_path)
-            self.addTopLevelItem(new_item)
-            self.setCurrentItem(new_item)
-
-        event.setDropAction(QtCore.Qt.MoveAction)
-        event.accept()
-        column = self.header().sortIndicatorSection()
-        order = self.header().sortIndicatorOrder()
-        self.sortItems(column, order)
-
-    def _apply_drag_visibility(self, hide):
-        if hide:
-            self._hidden_during_drag = []
-            if not isinstance(self._drag_item, FileTreeItem):
-                return
-            for item in self._iter_items():
-                if item is self._drag_item:
-                    continue
-                if not item.path.is_dir() and not item.isHidden():
-                    item.setHidden(True)
-                    self._hidden_during_drag.append(item)
-        else:
-            for item in self._hidden_during_drag:
-                item.setHidden(False)
-            self._hidden_during_drag = []
+        # Update metadata
+        self._update_paths_after_move(source_item, source_path, final_destination, source_was_directory)
 
     def _iter_items(self):
         root = self.invisibleRootItem()
@@ -341,21 +299,8 @@ class FileTree(QtWidgets.QTreeWidget):
                 if isinstance(child, FileTreeItem):
                     yield child
 
-    def _target_item_from_event(self, event):
-        pos = event.position().toPoint() if hasattr(event, 'position') else event.pos()
-        return self.itemAt(pos)
-
-    def _resolve_drop_directory(self, item):
-        if not isinstance(item, FileTreeItem):
-            return None
-        if item.path.is_dir():
-            return item
-        parent = item.parent()
-        if isinstance(parent, FileTreeItem):
-            return parent
-        return None
-
     def _is_descendant(self, potential_parent, potential_child):
+        """Check if potential_child is a descendant of potential_parent."""
         if not isinstance(potential_parent, FileTreeItem):
             return False
         current = potential_child
@@ -366,16 +311,19 @@ class FileTree(QtWidgets.QTreeWidget):
         return False
 
 class FileTreeItem(QtWidgets.QTreeWidgetItem):
-    def __init__(self, path):
+    def __init__(self, path, file_watcher):
         super().__init__()
         self.path = path
+        self.file_watcher = file_watcher
         self.setText(0, path.parts[-1])
         flags = self.flags() | QtCore.Qt.ItemFlag.ItemIsEditable
         if self.path.is_dir():
             self._loading_item = QtWidgets.QTreeWidgetItem(['loading..'])
             self.addChild(self._loading_item)
+            # Watch this directory for changes
+            self.file_watcher.addPath(str(self.path))
         self.setFlags(flags)
-        self._children_loaded = False
+        self.children_loaded = False
 
     def __lt__(self, other):
         if isinstance(other, FileTreeItem):
@@ -383,9 +331,9 @@ class FileTreeItem(QtWidgets.QTreeWidgetItem):
         return super().__lt__(other)
     
     def load_children(self):
-        if self._children_loaded:
-            return
-        self._children_loaded = True
+        if self.children_loaded:
+            return        
+
         if not self.path.is_dir():
             return
 
@@ -408,7 +356,7 @@ class FileTreeItem(QtWidgets.QTreeWidgetItem):
                 seen_paths.add(child_path)
                 item = existing.get(child_path)
                 if item is None:
-                    item = FileTreeItem(child_path)
+                    item = FileTreeItem(child_path, self.file_watcher)
                     self.addChild(item)
                 else:
                     item.path = child_path
@@ -418,6 +366,12 @@ class FileTreeItem(QtWidgets.QTreeWidgetItem):
             child = self.child(index)
             if isinstance(child, FileTreeItem) and child.path not in seen_paths:
                 self.removeChild(child)
+
+        self.children_loaded = True
+
+    def reload_children(self):
+        self.children_loaded = False
+        self.load_children()
 
     def update_paths(self, old_path, new_path):
         self.path = new_path

@@ -93,26 +93,33 @@ def _prompt_duplicate(parent, new_path, existing_path):
     Returns
     -------
     str
-        Either ``'delete_existing'`` or ``'keep_both'`` depending on the user's choice.
+        One of: ``'delete_existing'``, ``'delete_new'``, ``'keep_both'``, or ``'cancel'``.
     """
     box = QtWidgets.QMessageBox(parent)
     box.setIcon(QtWidgets.QMessageBox.Warning)
     box.setWindowTitle('Duplicate Song Detected')
     box.setText(
-        f"A song with the same contents is already tracked at:\n"
-        f"{existing_path}\n\n"
-        f"New file:\n{new_path}\n\n"
-        "Which version should be kept?"
+        f"A duplicate file with the same contents has been detected:\n\n"
+        f"A) {existing_path}\n\n"
+        f"B) {new_path}\n\n"
+        "What would you like to do?"
     )
-    delete_existing = box.addButton('Delete Tracked File', QtWidgets.QMessageBox.AcceptRole)
-    keep_both = box.addButton('Keep Both', QtWidgets.QMessageBox.RejectRole)
+    delete_a = box.addButton('Delete A', QtWidgets.QMessageBox.DestructiveRole)
+    delete_b = box.addButton('Delete B', QtWidgets.QMessageBox.DestructiveRole)
+    keep_both = box.addButton('Keep Both', QtWidgets.QMessageBox.AcceptRole)
     box.setDefaultButton(keep_both)
     box.exec()
 
     clicked = box.clickedButton()
-    if clicked is delete_existing:
+    if clicked is delete_a:
         return 'delete_existing'
-    return 'keep_both'
+    elif clicked is delete_b:
+        return 'delete_new'
+    elif clicked is keep_both:
+        return 'keep_both'
+    else:
+        # Dialog was closed without selecting a button
+        return 'cancel'
 
 
 def register_file(path, parent=None):
@@ -162,6 +169,9 @@ def register_file(path, parent=None):
             if _delete_path(normalized_existing, parent):
                 entry['filename'] = str(path)
                 config.save()
+        elif decision == 'delete_new':
+            _delete_path(path, parent)
+        # For 'keep_both' and 'cancel', do nothing
         return
 
     entry['filename'] = str(path)

@@ -1,7 +1,7 @@
 import os
 import pathlib
 import shutil
-from .qt import QtCore, QtWidgets
+from .qt import QtCore, QtWidgets, QtGui
 from .file_registry import handle_delete, handle_move
 
 
@@ -14,7 +14,8 @@ class FileTree(QtWidgets.QTreeWidget):
         self.setHeaderLabels(['File', 'Rating', 'Difficulty', 'Tags'])
         self.itemDoubleClicked.connect(self.on_item_double_clicked)
         self.itemExpanded.connect(self.on_item_expanded)
-        self.setEditTriggers(self.SelectedClicked)
+        self.itemClicked.connect(self.on_item_clicked)
+        self.setEditTriggers(self.EditKeyPressed)
         # allow sorting
         self.setSortingEnabled(True)
         self.itemChanged.connect(self.on_item_changed)
@@ -31,6 +32,35 @@ class FileTree(QtWidgets.QTreeWidget):
     def on_item_double_clicked(self, item, column):
         if item.path.is_file():
             self.file_double_clicked.emit(str(item.path))
+
+    def on_item_clicked(self, item, column):
+        """Show rating widget when clicking column 1."""
+        if column == 1 and isinstance(item, FileTreeItem) and item.path.is_file():
+            self._show_rating_widget(item)
+
+    def _show_rating_widget(self, item):
+        """Show rating popup for item."""
+        from .rating_widget import RatingWidget
+        from .song_info import SongInfo
+
+        try:
+            song_info = SongInfo.load(str(item.path), parent=self)
+            current_rating = song_info.get_setting('rating')
+        except Exception:
+            return
+
+        widget = RatingWidget(current_rating, parent=self)
+
+        def on_rating_changed(new_rating):
+            song_info.update_settings(rating=new_rating)
+            item._update_rating_display()
+
+        widget.rating_changed.connect(on_rating_changed)
+
+        # Position near cursor
+        cursor_pos = QtGui.QCursor.pos()
+        widget.move(cursor_pos.x() + 10, cursor_pos.y() + 10)
+        widget.show()
 
     def set_roots(self, roots):
         self.clear()
@@ -401,6 +431,9 @@ class FileTreeItem(QtWidgets.QTreeWidgetItem):
             self.addChild(self._loading_item)
             # Watch this directory for changes
             self.file_watcher.addPath(str(self.path))
+        else:
+            # Update rating display for files
+            self._update_rating_display()
         self.setFlags(flags)
         self.children_loaded = False
 
@@ -443,6 +476,9 @@ class FileTreeItem(QtWidgets.QTreeWidgetItem):
                 else:
                     item.path = child_path
                     item.setText(0, child_path.name)
+                    # Update rating when reloading
+                    if child_path.is_file():
+                        item._update_rating_display()
 
         for index in reversed(range(self.childCount())):
             child = self.child(index)
@@ -472,3 +508,19 @@ class FileTreeItem(QtWidgets.QTreeWidgetItem):
                         relative = pathlib.Path(child.path.name)
                     child_new_path = new_path / relative
                     child.update_paths(child.path, child_new_path)
+
+    def _update_rating_display(self):
+        """Update the rating column display based on song rating in config."""
+        if not self.path.is_file():
+            return
+        try:
+            from .song_info import SongInfo
+            from .rating_widget import rating_to_stars
+            song_info = SongInfo.load(str(self.path), parent=None)
+            rating = song_info.get_setting('rating')
+            stars = rating_to_stars(rating)
+            # Don't show stars for unrated files in the tree
+            self.setText(1, stars if rating > 0 else '')
+        except Exception:
+            # If file can't be loaded or isn't a valid song, leave blank
+            self.setText(1, '')

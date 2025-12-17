@@ -26,6 +26,7 @@ default_song_config = {
     "speed": 100.0,
     "zoom": 1.0,
     "transpose": 0,
+    "rating": 0,  # 0-10 scale, 0 = unrated
     "loops": [],
     "track_modes": [],  # List of [part_name, staff, mode] tuples
 }
@@ -98,7 +99,7 @@ class Config:
 
         return settings
 
-    def update_song_settings(self, filename, speed=None, zoom=None, loops=None, transpose=None, track_modes=None):
+    def update_song_settings(self, filename, speed=None, zoom=None, loops=None, transpose=None, track_modes=None, rating=None):
         """Update song settings by filename. Creates new entry if not found."""
         sha = self.get_sha(filename)
 
@@ -125,6 +126,8 @@ class Config:
             existing_song['transpose'] = transpose
         if track_modes is not None:
             existing_song['track_modes'] = track_modes
+        if rating is not None:
+            existing_song['rating'] = rating
 
         self.save()
 

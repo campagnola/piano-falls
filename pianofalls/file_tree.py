@@ -19,6 +19,8 @@ class FileTree(QtWidgets.QTreeWidget):
         # allow sorting
         self.setSortingEnabled(True)
         self.itemChanged.connect(self.on_item_changed)
+        # enable multi-selection
+        self.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
 
         self.rename_action = QtWidgets.QAction('Rename', self)
         self.delete_action = QtWidgets.QAction('Delete', self)
@@ -119,13 +121,22 @@ class FileTree(QtWidgets.QTreeWidget):
         item = self.itemAt(event.pos())
         if not isinstance(item, FileTreeItem):
             return
-        self.setCurrentItem(item)
+
+        # Get all selected items
+        selected_items = [item for item in self.selectedItems() if isinstance(item, FileTreeItem)]
+        if not selected_items:
+            return
+
         menu = QtWidgets.QMenu(self)
-        menu.addAction(self.rename_action)
+
+        # Only show rename for single selection
+        if len(selected_items) == 1:
+            menu.addAction(self.rename_action)
+
         menu.addAction(self.delete_action)
 
         # Add "Move to..." submenu with folder hierarchy
-        move_menu = self._build_move_to_menu(item)
+        move_menu = self._build_move_to_menu(selected_items)
         if move_menu is not None:
             menu.addMenu(move_menu)
 
@@ -133,53 +144,67 @@ class FileTree(QtWidgets.QTreeWidget):
 
     def keyPressEvent(self, event):
         if event.key() == QtCore.Qt.Key_Delete:
-            if isinstance(self.currentItem(), FileTreeItem):
+            # Check if any selected items are FileTreeItem
+            if any(isinstance(item, FileTreeItem) for item in self.selectedItems()):
                 self.trigger_delete()
                 return
         elif event.key() == QtCore.Qt.Key_F2:
-            if isinstance(self.currentItem(), FileTreeItem):
+            # Check if any selected items are FileTreeItem
+            if any(isinstance(item, FileTreeItem) for item in self.selectedItems()):
                 self.trigger_rename()
                 return
         super().keyPressEvent(event)
 
     def trigger_rename(self):
-        item = self.currentItem()
-        if isinstance(item, FileTreeItem):
-            self.scrollToItem(item)
-            self.editItem(item, 0)
+        # Only allow rename for single selection
+        selected = [item for item in self.selectedItems() if isinstance(item, FileTreeItem)]
+        if len(selected) != 1:
+            return
+        item = selected[0]
+        self.scrollToItem(item)
+        self.editItem(item, 0)
 
     def trigger_delete(self):
-        item = self.currentItem()
-        if not isinstance(item, FileTreeItem):
+        items = [item for item in self.selectedItems() if isinstance(item, FileTreeItem)]
+        if not items:
             return
-        deleted_path = pathlib.Path(item.path)
-        was_directory = deleted_path.is_dir()
+
+        # Create confirmation message
+        if len(items) == 1:
+            message = f"Delete '{items[0].path.name}'?"
+        else:
+            message = f"Delete {len(items)} items?"
 
         response = QtWidgets.QMessageBox.question(
             self,
             'Confirm Delete',
-            f"Delete '{item.path.name}'?",
+            message,
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.No,
         )
         if response != QtWidgets.QMessageBox.Yes:
             return
 
-        try:
-            if item.path.is_dir():
-                shutil.rmtree(item.path)
-            else:
-                item.path.unlink()
-        except OSError as exc:
-            QtWidgets.QMessageBox.critical(
-                self,
-                'Delete Failed',
-                f"Could not delete '{item.path}'.\n{exc}"
-            )
-            return
+        # Delete all selected items
+        for item in items:
+            deleted_path = pathlib.Path(item.path)
+            was_directory = deleted_path.is_dir()
 
-        handle_delete(deleted_path, was_directory=was_directory)
-        self._remove_item(item)
+            try:
+                if item.path.is_dir():
+                    shutil.rmtree(item.path)
+                else:
+                    item.path.unlink()
+            except OSError as exc:
+                QtWidgets.QMessageBox.critical(
+                    self,
+                    'Delete Failed',
+                    f"Could not delete '{item.path}'.\n{exc}"
+                )
+                continue
+
+            handle_delete(deleted_path, was_directory=was_directory)
+            self._remove_item(item)
 
     def _remove_item(self, item):
         # Remove item and all its descendants from the dictionary
@@ -262,13 +287,13 @@ class FileTree(QtWidgets.QTreeWidget):
                 item.reload_children()
                 break
 
-    def _build_move_to_menu(self, source_item):
+    def _build_move_to_menu(self, source_items):
         """Build a hierarchical menu showing all valid destination folders."""
         move_menu = QtWidgets.QMenu('Move to...', self)
 
-        def mk_move_callback(source_item, destination_path):
+        def mk_move_callback(source_items, destination_path):
             def callback():
-                self._perform_move(source_item, destination_path)
+                self._perform_move(source_items, destination_path)
             return callback
 
         path_menus = {}
@@ -278,7 +303,7 @@ class FileTree(QtWidgets.QTreeWidget):
                 for (dirpath, dirnames, filenames) in os.walk(item.path):
                     parent_path, name = os.path.split(dirpath)
                     parent_menu = path_menus.get(parent_path, move_menu)
-                    callback = mk_move_callback(source_item, pathlib.Path(dirpath))
+                    callback = mk_move_callback(source_items, pathlib.Path(dirpath))
                     if len(dirnames) == 0:
                         # Add folder as action (immediately move here)
                         action = parent_menu.addAction(name)
@@ -287,47 +312,66 @@ class FileTree(QtWidgets.QTreeWidget):
                         # folder has subfolders; make a tree and add action inside
                         path_menus[dirpath] = submenu = parent_menu.addMenu(name)
                         action = submenu.addAction(f'← Move here')
-                        action.triggered.connect(mk_move_callback(source_item, pathlib.Path(dirpath)))
+                        action.triggered.connect(mk_move_callback(source_items, pathlib.Path(dirpath)))
                         submenu.addSeparator()
 
         return move_menu
 
-    def _perform_move(self, source_item, destination_path):
-        """Move source_item into destination_path folder."""
-        source_path = source_item.path
-        source_was_directory = source_path.is_dir()
-        final_destination = destination_path / source_path.name
+    def _perform_move(self, source_items, destination_path):
+        """Move source_items into destination_path folder."""
+        # Ensure source_items is a list
+        if not isinstance(source_items, list):
+            source_items = [source_items]
 
-        if final_destination.exists():
+        # Check for conflicts
+        conflicts = []
+        for item in source_items:
+            final_destination = destination_path / item.path.name
+            if final_destination.exists():
+                conflicts.append(item.path.name)
+
+        if conflicts:
             QtWidgets.QMessageBox.warning(
                 self,
                 'Move Not Allowed',
-                f"'{source_path.name}' already exists in the destination."
+                f"The following items already exist in the destination:\n" + "\n".join(conflicts)
             )
             return
+
+        # Create confirmation message
+        if len(source_items) == 1:
+            message = f"Move '{source_items[0].path.name}' to '{destination_path}'?"
+        else:
+            message = f"Move {len(source_items)} items to '{destination_path}'?"
 
         confirmation = QtWidgets.QMessageBox.question(
             self,
             'Confirm Move',
-            f"Move '{source_path.name}' to '{destination_path}'?",
+            message,
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.No,
         )
         if confirmation != QtWidgets.QMessageBox.Yes:
             return
 
-        try:
-            shutil.move(str(source_path), str(final_destination))
-        except OSError as exc:
-            QtWidgets.QMessageBox.critical(
-                self,
-                'Move Failed',
-                f"Could not move '{source_path}' to '{destination_path}'.\n{exc}"
-            )
-            return
+        # Move all items
+        for item in source_items:
+            source_path = item.path
+            source_was_directory = source_path.is_dir()
+            final_destination = destination_path / source_path.name
 
-        # Update metadata
-        self._update_paths_after_move(source_item, source_path, final_destination, source_was_directory)
+            try:
+                shutil.move(str(source_path), str(final_destination))
+            except OSError as exc:
+                QtWidgets.QMessageBox.critical(
+                    self,
+                    'Move Failed',
+                    f"Could not move '{source_path}' to '{destination_path}'.\n{exc}"
+                )
+                continue
+
+            # Update metadata
+            self._update_paths_after_move(item, source_path, final_destination, source_was_directory)
 
     def _iter_items(self):
         root = self.invisibleRootItem()

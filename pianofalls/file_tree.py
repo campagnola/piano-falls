@@ -3,6 +3,7 @@ import pathlib
 import shutil
 from .qt import QtCore, QtWidgets, QtGui
 from .file_registry import handle_delete, handle_move
+from .file_stability_monitor import FileStabilityMonitor
 
 
 class FileTree(QtWidgets.QTreeWidget):
@@ -29,7 +30,9 @@ class FileTree(QtWidgets.QTreeWidget):
         self.delete_action.triggered.connect(self.trigger_delete)
 
         self.file_watcher = QtCore.QFileSystemWatcher()
-        self.file_watcher.directoryChanged.connect(self._on_directory_changed)
+        self.stability_monitor = FileStabilityMonitor()
+        self.file_watcher.directoryChanged.connect(self.stability_monitor.notify_directory_changed)
+        self.stability_monitor.directory_stable.connect(self._on_directory_stable)
 
     def on_item_double_clicked(self, item, column):
         if item.path.is_file():
@@ -275,9 +278,9 @@ class FileTree(QtWidgets.QTreeWidget):
         """Return True when the file suffix is one we manage metadata for."""
         return path.suffix.lower() in {'.mid', '.midi', '.mxl', '.xml', '.musicxml'}
 
-    def _on_directory_changed(self, dir_path):
-        """Handle filesystem changes by updating only the affected tree item."""
-        print(f"Directory changed: {dir_path}")
+    def _on_directory_stable(self, dir_path):
+        """Handle filesystem changes after files have stabilized (3 seconds of no size changes)."""
+        print(f"Directory stable: {dir_path}")
         changed_path = pathlib.Path(dir_path)
 
         # Find the tree item corresponding to this directory

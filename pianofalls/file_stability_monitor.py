@@ -72,6 +72,23 @@ class FileStabilityMonitor(QtCore.QObject):
         """
         self.pending_dirs.put(dir_path)
 
+    def force_immediate_update(self, dir_path):
+        """
+        Force an immediate tree update for a directory, bypassing stability monitoring.
+
+        This should be called for user-initiated changes (moves, deletes, renames)
+        where we want immediate visual feedback rather than waiting for stability.
+
+        This method is safe to call from the Qt main thread.
+
+        Parameters
+        ----------
+        dir_path : str or pathlib.Path
+            Path to directory that should be updated immediately
+        """
+        # Emit signal immediately without waiting for stability
+        self.directory_stable.emit(str(dir_path))
+
     def _monitor_loop(self):
         """
         Worker thread main loop - monitors file stability.

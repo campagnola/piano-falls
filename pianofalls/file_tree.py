@@ -120,6 +120,9 @@ class FileTree(QtWidgets.QTreeWidget):
 
             self._update_paths_after_move(item, old_path, new_path, old_was_directory)
 
+            # Force immediate update for parent directory
+            self.stability_monitor.force_immediate_update(new_path.parent)
+
     def contextMenuEvent(self, event):
         item = self.itemAt(event.pos())
         if not isinstance(item, FileTreeItem):
@@ -188,10 +191,16 @@ class FileTree(QtWidgets.QTreeWidget):
         if response != QtWidgets.QMessageBox.Yes:
             return
 
+        # Track parent directories for immediate update
+        parent_dirs = set()
+
         # Delete all selected items
         for item in items:
             deleted_path = pathlib.Path(item.path)
             was_directory = deleted_path.is_dir()
+
+            # Track parent directory
+            parent_dirs.add(deleted_path.parent)
 
             try:
                 if item.path.is_dir():
@@ -208,6 +217,10 @@ class FileTree(QtWidgets.QTreeWidget):
 
             handle_delete(deleted_path, was_directory=was_directory)
             self._remove_item(item)
+
+        # Force immediate update for affected parent directories
+        for parent_dir in parent_dirs:
+            self.stability_monitor.force_immediate_update(parent_dir)
 
     def _remove_item(self, item):
         # Remove item and all its descendants from the dictionary
@@ -357,11 +370,17 @@ class FileTree(QtWidgets.QTreeWidget):
         if confirmation != QtWidgets.QMessageBox.Yes:
             return
 
+        # Track directories for immediate update
+        source_parent_dirs = set()
+
         # Move all items
         for item in source_items:
             source_path = item.path
             source_was_directory = source_path.is_dir()
             final_destination = destination_path / source_path.name
+
+            # Track source parent directory
+            source_parent_dirs.add(source_path.parent)
 
             try:
                 shutil.move(str(source_path), str(final_destination))
@@ -375,6 +394,11 @@ class FileTree(QtWidgets.QTreeWidget):
 
             # Update metadata
             self._update_paths_after_move(item, source_path, final_destination, source_was_directory)
+
+        # Force immediate update for affected directories
+        for source_parent in source_parent_dirs:
+            self.stability_monitor.force_immediate_update(source_parent)
+        self.stability_monitor.force_immediate_update(destination_path)
 
     def _iter_items(self):
         root = self.invisibleRootItem()

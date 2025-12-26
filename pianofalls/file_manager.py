@@ -1,10 +1,3 @@
-"""FileManager class providing centralized file operations for Piano Falls.
-
-This module replaces the scattered file operations from FileTree and provides a single
-point of access for all file system operations, including watching, listing, moving,
-renaming, and deleting files.
-"""
-
 import os
 import pathlib
 import shutil
@@ -157,9 +150,8 @@ class FileManager(QtCore.QObject):
         self.stability_monitor.force_immediate_update(old_path.parent)
         if new_path.parent != old_path.parent:
             self.stability_monitor.force_immediate_update(new_path.parent)
+            self.emit_change_signal(old_path.parent)
 
-        # Emit change signals
-        self.emit_change_signal(old_path.parent)
         self.emit_change_signal(new_path.parent)
 
     def rename_file(self, old_path, new_name):

@@ -4,6 +4,7 @@ This module manages song metadata using individual JSON files for each unique so
 Replaces the song-related functionality that was previously handled by the Config class.
 """
 
+import functools
 import os
 import hashlib
 import pathlib
@@ -129,6 +130,7 @@ class SongRepository:
 
         return song_info
 
+    @functools.lru_cache(maxsize=1024)
     def _compute_sha(self, filepath):
         """
         Compute SHA-1 hash of a file.

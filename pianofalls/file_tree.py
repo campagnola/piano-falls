@@ -1,14 +1,13 @@
 import os
 import pathlib
-import shutil
-from .qt import QtCore, QtWidgets, QtGui
-from .file_registry import handle_delete, handle_move
-from .file_stability_monitor import FileStabilityMonitor
+from .qt import QtCore, QtWidgets, QtGui, Signal, QAction, Qt
+from .file_manager import FileManager
+from .song_repository import SongRepository
 
 
 class FileTree(QtWidgets.QTreeWidget):
 
-    file_double_clicked = QtCore.Signal(str)
+    file_double_clicked = Signal(str)
 
     def __init__(self):
         super().__init__()
@@ -23,16 +22,15 @@ class FileTree(QtWidgets.QTreeWidget):
         # enable multi-selection
         self.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
 
-        self.rename_action = QtWidgets.QAction('Rename', self)
-        self.delete_action = QtWidgets.QAction('Delete', self)
-        self.move_to_action = QtWidgets.QAction('Move to...', self)
+        self.rename_action = QAction('Rename', self)
+        self.delete_action = QAction('Delete', self)
+        self.move_to_action = QAction('Move to...', self)
         self.rename_action.triggered.connect(self.trigger_rename)
         self.delete_action.triggered.connect(self.trigger_delete)
 
-        self.file_watcher = QtCore.QFileSystemWatcher()
-        self.stability_monitor = FileStabilityMonitor()
-        self.file_watcher.directoryChanged.connect(self.stability_monitor.notify_directory_changed)
-        self.stability_monitor.directory_stable.connect(self._on_directory_stable)
+        self.file_manager = FileManager.get_instance()
+        self.file_manager.file_changed.connect(self._on_file_changed)
+        self.song_repository = SongRepository.get_instance()
 
     def on_item_double_clicked(self, item, column):
         if item.path.is_file():
@@ -46,10 +44,9 @@ class FileTree(QtWidgets.QTreeWidget):
     def _show_rating_widget(self, item):
         """Show rating popup for item."""
         from .rating_widget import RatingWidget
-        from .song_info import SongInfo
 
         try:
-            song_info = SongInfo.load(str(item.path), parent=self)
+            song_info = self.song_repository.get_song_info(str(item.path))
             current_rating = song_info.get_setting('rating')
         except Exception:
             return
@@ -66,6 +63,13 @@ class FileTree(QtWidgets.QTreeWidget):
         cursor_pos = QtGui.QCursor.pos()
         widget.move(cursor_pos.x() + 10, cursor_pos.y() + 10)
         widget.show()
+
+    def _on_file_changed(self, path):
+        """Handle file changes from FileManager."""
+        # Convert to Path and find corresponding tree item for update
+        changed_path = pathlib.Path(path)
+        # TODO: Implement tree refresh logic based on changed path
+        pass
 
     def set_roots(self, roots):
         self.clear()
@@ -105,10 +109,12 @@ class FileTree(QtWidgets.QTreeWidget):
                 return
 
             old_path = item.path
-            old_was_directory = old_path.is_dir()
             try:
-                old_path.rename(new_path)
-            except OSError as exc:
+                self.file_manager.rename_file(old_path, new_name)
+                # Update item path after successful rename
+                item.path = new_path
+                item.setText(0, new_name)
+            except (OSError, FileExistsError) as exc:
                 QtWidgets.QMessageBox.critical(
                     self,
                     'Rename Failed',
@@ -116,12 +122,6 @@ class FileTree(QtWidgets.QTreeWidget):
                 )
                 with QtCore.QSignalBlocker(self):
                     item.setText(0, item.path.name)
-                return
-
-            self._update_paths_after_move(item, old_path, new_path, old_was_directory)
-
-            # Force immediate update for parent directory
-            self.stability_monitor.force_immediate_update(new_path.parent)
 
     def contextMenuEvent(self, event):
         item = self.itemAt(event.pos())
@@ -139,22 +139,24 @@ class FileTree(QtWidgets.QTreeWidget):
         if len(selected_items) == 1:
             menu.addAction(self.rename_action)
 
-        menu.addAction(self.delete_action)
+        # only show move/delete if all selected items are FileTreeItem
+        if all(isinstance(i, FileTreeItem) for i in selected_items):
+            menu.addAction(self.delete_action)
 
-        # Add "Move to..." submenu with folder hierarchy
-        move_menu = self._build_move_to_menu(selected_items)
-        if move_menu is not None:
-            menu.addMenu(move_menu)
+            # Add "Move to..." submenu with folder hierarchy
+            move_menu = self._build_move_to_menu(selected_items)
+            if move_menu is not None:
+                menu.addMenu(move_menu)
 
         menu.exec(event.globalPos())
 
     def keyPressEvent(self, event):
-        if event.key() == QtCore.Qt.Key_Delete:
+        if event.key() == Qt.Key_Delete:
             # Check if any selected items are FileTreeItem
             if any(isinstance(item, FileTreeItem) for item in self.selectedItems()):
                 self.trigger_delete()
                 return
-        elif event.key() == QtCore.Qt.Key_F2:
+        elif event.key() == Qt.Key_F2:
             # Check if any selected items are FileTreeItem
             if any(isinstance(item, FileTreeItem) for item in self.selectedItems()):
                 self.trigger_rename()
@@ -194,33 +196,17 @@ class FileTree(QtWidgets.QTreeWidget):
         # Track parent directories for immediate update
         parent_dirs = set()
 
-        # Delete all selected items
+        # Delete all selected items using FileManager
         for item in items:
-            deleted_path = pathlib.Path(item.path)
-            was_directory = deleted_path.is_dir()
-
-            # Track parent directory
-            parent_dirs.add(deleted_path.parent)
-
             try:
-                if item.path.is_dir():
-                    shutil.rmtree(item.path)
-                else:
-                    item.path.unlink()
+                self.file_manager.delete_file(item.path)
+                self._remove_item(item)
             except OSError as exc:
                 QtWidgets.QMessageBox.critical(
                     self,
                     'Delete Failed',
                     f"Could not delete '{item.path}'.\n{exc}"
                 )
-                continue
-
-            handle_delete(deleted_path, was_directory=was_directory)
-            self._remove_item(item)
-
-        # Force immediate update for affected parent directories
-        for parent_dir in parent_dirs:
-            self.stability_monitor.force_immediate_update(parent_dir)
 
     def _remove_item(self, item):
         # Remove item and all its descendants from the dictionary
@@ -241,51 +227,6 @@ class FileTree(QtWidgets.QTreeWidget):
                 child = item.child(index)
                 self._unregister_item_recursive(child)
 
-    def _update_paths_after_move(self, item, old_path, new_path, old_was_directory):
-        """Refresh tree item text/paths and sync metadata for a move or rename."""
-        if isinstance(item, FileTreeItem):
-            item.update_paths(old_path, new_path)
-            self._sync_metadata_after_move(
-                pathlib.Path(old_path) if old_path is not None else None,
-                pathlib.Path(item.path),
-                old_was_directory
-            )
-
-    def _sync_metadata_after_move(self, old_base_path, new_base_path, old_was_directory):
-        """Walk moved content and update the shared registry so hashes map to new paths."""
-        new_base_path = pathlib.Path(new_base_path)
-        paths_to_process = set()
-
-        if new_base_path.exists():
-            if new_base_path.is_dir():
-                try:
-                    for candidate in new_base_path.rglob('*'):
-                        if candidate.is_file() and self._is_supported_file(candidate):
-                            paths_to_process.add(candidate)
-                except (OSError, PermissionError):
-                    pass
-            elif new_base_path.is_file() and self._is_supported_file(new_base_path):
-                paths_to_process.add(new_base_path)
-
-        if not paths_to_process and new_base_path.is_file() and self._is_supported_file(new_base_path):
-            paths_to_process.add(new_base_path)
-
-        if not paths_to_process and old_base_path is not None and not old_was_directory:
-            handle_delete(old_base_path, was_directory=old_was_directory)
-            return
-
-        for candidate in paths_to_process:
-            old_candidate = None
-            if old_base_path is not None and new_base_path.is_dir():
-                try:
-                    relative = candidate.relative_to(new_base_path)
-                    old_candidate = old_base_path / relative
-                except ValueError:
-                    old_candidate = None
-            elif old_base_path is not None and not new_base_path.is_dir():
-                old_candidate = old_base_path
-
-            handle_move(old_candidate, candidate, parent=self)
 
     def _is_supported_file(self, path):
         """Return True when the file suffix is one we manage metadata for."""

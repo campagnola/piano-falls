@@ -3,6 +3,7 @@ import pathlib
 import shutil
 from .qt import QtCore
 from .file_stability_monitor import FileStabilityMonitor
+from .song_repository import SongRepository
 
 
 class FileManager(QtCore.QObject):
@@ -196,21 +197,9 @@ class FileManager(QtCore.QObject):
             If the delete operation fails
         """
         path = pathlib.Path(path)
-        was_directory = path.is_dir()
         parent_dir = path.parent
 
-        # Perform the delete operation
-        if path.is_dir():
-            shutil.rmtree(path)
-        else:
-            path.unlink()
-
-        # For supported music files, trigger SongInfo verification
-        # This will be implemented when SongRepository is available
-        if not was_directory and self._is_supported_file(path):
-            # TODO: Call SongRepository to handle metadata cleanup
-            # This will be implemented in later todos when SongRepository exists
-            pass
+        path.unlink()
 
         # Force immediate UI update
         self.stability_monitor.force_immediate_update(parent_dir)

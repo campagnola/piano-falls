@@ -26,7 +26,6 @@ default_config = {
 }
 
 
-
 class Config:
 
     singleton = None
@@ -77,6 +76,19 @@ class Config:
         self.data[key] = value
         self.save()
 
+
+def use_test_config(path=None):
+    """Switch to a temporary config for testing purposes."""
+    global config, config_dir, config_path, songs_dir, default_config
+    if path is not None:
+        config_dir = pathlib.Path(path)
+    else:
+        config_dir = pathlib.Path(__file__).parent / 'test_config'
+    default_config['search_paths'] = [str(config_dir / 'test_songs')]
+    config_path = config_dir / 'config.json'
+    songs_dir = config_dir / 'songs'
+    Config.singleton = None
+    config = Config.get_config()
 
 
 config = Config.get_config()

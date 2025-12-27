@@ -82,8 +82,10 @@ class FileManager(QtCore.QObject):
             List of files and directories, with files filtered to supported types
         """
         path = pathlib.Path(os.path.expanduser(path))
-        if not path.exists() or not path.is_dir():
-            return []
+        if not path.exists():
+            raise FileNotFoundError(f"Directory does not exist: {path}")
+        if not path.is_dir():
+            raise NotADirectoryError(f"Path is not a directory: {path}")
 
         contents = []
         try:
@@ -151,9 +153,6 @@ class FileManager(QtCore.QObject):
         self.stability_monitor.force_immediate_update(old_path.parent)
         if new_path.parent != old_path.parent:
             self.stability_monitor.force_immediate_update(new_path.parent)
-            self.emit_change_signal(old_path.parent)
-
-        self.emit_change_signal(new_path.parent)
 
     def rename_file(self, old_path, new_name):
         """

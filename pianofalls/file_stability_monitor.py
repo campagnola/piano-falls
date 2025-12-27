@@ -36,9 +36,6 @@ class FileStabilityMonitor(QtCore.QObject):
     STABILITY_DURATION = 3.0  # seconds - how long size must be unchanged
     CHECK_INTERVAL = 0.5      # seconds - how often to check file sizes
 
-    # Supported music file extensions
-    MUSIC_EXTENSIONS = {'.mid', '.midi', '.mxl', '.xml', '.musicxml'}
-
     def __init__(self):
         """Initialize the file stability monitor and start worker thread."""
         super().__init__()

@@ -129,14 +129,15 @@ class TestFileListingAndFiltering:
         file_names = [p.name for p in contents[1:] if p.is_file()]
         assert file_names == sorted(file_names)
 
-    def test_list_invalid(self, isolated_file_manager):
+    def test_list_invalid(self, isolated_file_manager, sample_music_files):
         """Test listing invalid paths raises appropriate errors."""
         fm, _ = isolated_file_manager
+        _, created_files = sample_music_files
 
         # Test listing a nonexistent directory raises FileNotFoundError.
         with pytest.raises(FileNotFoundError):
             fm.list_folder_contents('/nonexistent/path')
-            
+
         # Test listing a file instead of directory raises NotADirectoryError
         with pytest.raises(NotADirectoryError):
             fm.list_folder_contents(created_files['song1.mid'])

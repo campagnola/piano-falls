@@ -37,8 +37,8 @@ class TimeScroller(QtCore.QObject):
         """Set the song from a SongInfo instance."""
         self.song = song_info.get_song()
         self.song_info = song_info
+        self.set_time(-2)  # Reset time before setting song on scroll mode
         self.scroll_mode.set_song(self.song)
-        self.set_time(-2)
         self.set_scrolling(True)
 
     def set_scroll_speed(self, speed):
@@ -201,7 +201,17 @@ class ScrollMode:
         """Reset played state of future notes based on current time and track modes
         Also sets next_note_index to the first note after current time.
         """
-        self.next_note_index = self.song.index_of_note_starting_at(self.scroller.target_time)
+        if self.song is None:
+            self.next_note_index = 0
+            self.next_autoplay_check_index = 0
+            return
+
+        index = self.song.index_of_note_starting_at(self.scroller.target_time)
+        if index is None:
+            # We're past all notes, set to end of song
+            self.next_note_index = len(self.song.notes)
+        else:
+            self.next_note_index = index
         self.next_autoplay_check_index = self.next_note_index
 
         # mark next event + all following events as unplayed, but only for 'player' tracks

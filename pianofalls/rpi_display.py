@@ -118,32 +118,42 @@ class FrameSender:
 class RPiRenderer:
     def __init__(self, mainwindow, sender):
         self.mainwindow = mainwindow
-        self.song = None
         self.display_model = mainwindow.display_model
         self.current_time = 0
         self.zoom = 1
         self.time_range = (0, 1)
         self.sender = sender
+        self.need_update = True  # Start dirty to render initial frame
 
-        mainwindow.song_changed.connect(self.set_song)
+        # Connect to display model signals
+        mainwindow.display_model.display_events_changed.connect(self.update)  # Song, colors, modes changed
+        mainwindow.display_model.played_states_changed.connect(self.update)  # Note played states changed
+
+        # Track time changes for viewport updates
         mainwindow.scroller.current_time_changed.connect(self.set_time)
 
         self.render_thread = threading.Thread(target=self.render_loop, daemon=True)
         self.render_thread.start()
 
-    def set_song(self, song):
-        self.song = song
+    def update(self):
+        """Mark that the display needs updating."""
+        self.need_update = True
 
     def set_time(self, time):
         self.current_time = time
-        self.set_time_range((time, time + 3 / self.zoom))
+        new_time_range = (time, time + 3 / self.zoom)
+        if new_time_range != self.time_range:
+            self.time_range = new_time_range
+            self.update()
 
     def set_zoom(self, zoom):
         self.zoom = zoom
         self.set_time(self.current_time)
 
     def set_time_range(self, time_range):
-        self.time_range = time_range
+        if time_range != self.time_range:
+            self.time_range = time_range
+            self.update()
 
     def render_frame(self, time_range):
         rows, cols = config['rpi_display']['resolution']
@@ -198,8 +208,11 @@ class RPiRenderer:
             self.update_frame()
     
     def update_frame(self):
-        if self.song is None:
+        # Only render and send if something changed
+        if not self.need_update:
             return
+
+        self.need_update = False
         frame = self.render_frame(self.time_range)
         self.sender.send_frame(frame)
 

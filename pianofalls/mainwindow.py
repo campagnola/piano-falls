@@ -23,7 +23,7 @@ class MainWindow(QtWidgets.QWidget):
         # Create display model - central source of truth for what to display
         self.display_model = DisplayModel()
 
-        self.scroller = TimeScroller()
+        self.scroller = TimeScroller(display_model=self.display_model)
 
         self.layout = QtWidgets.QGridLayout()
         self.layout.setContentsMargins(0, 0, 0, 0)

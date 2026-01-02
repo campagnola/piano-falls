@@ -51,7 +51,8 @@ class DisplayModel(QtCore.QObject):
     """
 
     # Signals
-    display_events_changed = QtCore.Signal()  # Emitted when any data changes
+    display_events_changed = QtCore.Signal()  # Emitted when display event structure changes (song, colors, modes)
+    played_states_changed = QtCore.Signal()  # Emitted when note played states change
 
     def __init__(self):
         super().__init__()
@@ -93,6 +94,13 @@ class DisplayModel(QtCore.QObject):
         """
         self._track_colors = track_colors
         self._rebuild_display_events()
+
+    def notify_notes_played(self):
+        """
+        Notify that note played states have changed.
+        Call this when notes are marked as played/unplayed without rebuilding display events.
+        """
+        self.played_states_changed.emit()
 
     # === Getters ===
 

@@ -8,9 +8,10 @@ from .config import config
 class TimeScroller(QtCore.QObject):
     current_time_changed = QtCore.Signal(float)
 
-    def __init__(self):
+    def __init__(self, display_model):
         super().__init__()
         self.current_time = 0.0
+        self.display_model = display_model
 
         self.song = None
 
@@ -222,6 +223,9 @@ class ScrollMode:
             # mark note as unplayed if it's in a 'player' track and starts at or after the current time
             note.played = (i < self.next_note_index) or (track_mode != 'player')
 
+        # Notify display model that played states changed
+        self.scroller.display_model.notify_notes_played()
+
     def check_and_mark_played_notes(self, current_time):
         """Check MIDI input and mark matching notes as played.
         Returns list of recent note_on messages.
@@ -230,6 +234,7 @@ class ScrollMode:
         recent_presses = [msg for msg in recent_messages if msg.type == 'note_on']
 
         # check if any recent key presses match upcoming notes
+        any_marked = False
         for msg in recent_presses:
             matched_time = None
             for note in self.song.notes[self.next_note_index:]:
@@ -244,6 +249,11 @@ class ScrollMode:
                     if matched_time is None or matched_time == note.start_time:
                         note.played = True
                         matched_time = note.start_time
+                        any_marked = True
+
+        # Notify display model if any notes were marked as played
+        if any_marked:
+            self.scroller.display_model.notify_notes_played()
 
         return recent_presses
 
@@ -296,6 +306,7 @@ class TempoScrollMode(ScrollMode):
 
         # Mark notes as played once they've passed (for player tracks only)
         # This ensures missed notes are marked as played in tempo mode
+        any_marked = False
         while self.next_note_index < len(self.song.notes):
             note = self.song.notes[self.next_note_index]
             if note.start_time < new_time:
@@ -304,9 +315,14 @@ class TempoScrollMode(ScrollMode):
                 # Mark as played if it's a player track (autoplay tracks are already marked)
                 if track_mode == 'player':
                     note.played = True
+                    any_marked = True
                 self.next_note_index += 1
             else:
                 break
+
+        # Notify display model if any notes were marked as played
+        if any_marked:
+            self.scroller.display_model.notify_notes_played()
 
         # Handle autoplay notes
         self.handle_autoplay(new_time)

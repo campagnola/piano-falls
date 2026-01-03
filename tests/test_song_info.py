@@ -12,6 +12,7 @@ import os
 from unittest.mock import Mock, patch, MagicMock
 
 from pianofalls import config
+from pianofalls import song_info as song_info_module
 from pianofalls.song_info import SongInfo, default_song_config, _normalize_path
 
 
@@ -19,7 +20,7 @@ from pianofalls.song_info import SongInfo, default_song_config, _normalize_path
 def isolated_song_info_env(tmp_path):
     """Create isolated environment for SongInfo testing."""
     # Setup isolated test config
-    config.use_test_config(path=tmp_path / 'test_config')
+    config.config.load(tmp_path / 'test_config' / 'config.json')
 
     # Create test songs directory
     songs_dir = tmp_path / 'test_config' / 'songs'
@@ -43,15 +44,15 @@ def sample_song_content():
 @pytest.fixture
 def test_duplicate_dialog_config():
     """Add test configuration for duplicate dialog handling."""
-    original_config = config.config.data.copy()
+    original_config = config.config._data.copy()
 
     # Add test configuration for duplicate handling
-    config.config.data['test_duplicate_dialog_choice'] = 'keep_all'  # Default choice
+    config.config['test_duplicate_dialog_choice'] = 'keep_all'  # Default choice
 
     yield
 
     # Restore original config
-    config.config.data = original_config
+    config.config._data = original_config
 
 
 class TestSongInfoBasics:
@@ -248,8 +249,8 @@ class TestFileVerification:
 
         song_info.verify_files()
 
-        # Should still update timestamp even with no files
-        assert song_info.last_verified != initial_time
+        # Timestamp should remain unchanged when no files are tracked
+        assert song_info.last_verified == initial_time
 
 
 class TestStaleDetection:
@@ -287,6 +288,27 @@ class TestStaleDetection:
         # Set very old timestamp (more than 30 days ago)
         thirty_one_days_ago = time.time() - (31 * 24 * 60 * 60)
         song_info.last_verified = thirty_one_days_ago
+
+        assert song_info.is_stale()
+
+    def test_is_stale_after_file_removed(self, isolated_song_info_env, isolated_config, tmp_path):
+        """Test staleness after a tracked file is removed."""
+        config.config['stale_threshold_days'] = 1 / 86400
+
+        song_path = tmp_path / 'song1.mid'
+        song_path.write_bytes(b'fake midi content for song1')
+
+        song_info = SongInfo('test123')
+        song_info.check_duplicate(song_path)
+
+        assert not song_info.is_stale()
+
+        song_path.unlink()
+        song_info.verify_files()
+
+        assert not song_info.is_stale()
+
+        time.sleep(1.1)
 
         assert song_info.is_stale()
 

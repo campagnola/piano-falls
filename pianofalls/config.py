@@ -6,13 +6,9 @@ import pathlib
 
 # Define config directory based on platform
 if sys.platform == 'win32':
-    config_dir = pathlib.Path.home() / 'AppData' / 'Local' / 'pianofalls'
+    default_config_dir = pathlib.Path.home() / 'AppData' / 'Local' / 'pianofalls'
 else:
-    config_dir = pathlib.Path.home() / '.pianofalls'
-
-config_path = config_dir / 'config.json'
-songs_dir = config_dir / 'songs'
-
+    default_config_dir = pathlib.Path.home() / '.pianofalls'
 
 default_config = {
     "search_paths": ["~/Downloads"],
@@ -33,62 +29,49 @@ class Config:
     @classmethod
     def get_config(cls):
         if cls.singleton is None:
-            cls.singleton = Config(config_path)
+            cls.singleton = Config(default_config_dir / 'config.json')
         return cls.singleton
 
-    def __init__(self, filename):
-        self.config_file = pathlib.Path(filename)
-        self._ensure_directories()
-        self.load()
+    def __init__(self, config_file):
+        self.load(config_file)
 
-    def _ensure_directories(self):
-        """Create config directory structure if it doesn't exist."""
-        # Create main config directory
-        config_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create songs directory
-        songs_dir.mkdir(parents=True, exist_ok=True)
+    def load(self, config_file):
+        config_file = pathlib.Path(config_file)
+        self.config_file = config_file
+        self.config_dir = config_file.parent
+        self.songs_dir = config_file.parent / 'songs'
 
-    def load(self):
-        if not self.config_file.exists():
-            with open(self.config_file, 'w') as f:
-                f.write(json.dumps(default_config, indent=4))
+        # Ensure config and songs directories exist
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.songs_dir.mkdir(parents=True, exist_ok=True)
+
+        if not config_file.exists():
+            self._data = default_config.copy()
+            with open(config_file, 'w') as f:
+                f.write(json.dumps(self._data, indent=4))
         try:
-            with open(self.config_file) as f:
-                self.data = json.load(f)
+            with open(config_file) as f:
+                self._data = json.load(f)
         except Exception as e:
-            print(f"Error loading config file {self.config_file}: {e}")
-            self.data = default_config.copy()
+            print(f"Error loading config file {config_file}: {e}")
+            self._data = default_config.copy()
 
         # Ensure all default config fields are present
         for key, default_value in default_config.items():
-            if key not in self.data:
-                self.data[key] = default_value
+            if key not in self._data:
+                self._data[key] = default_value
 
     def save(self):
         with open(self.config_file, 'w') as f:
-            json.dump(self.data, f, indent=4)
+            json.dump(self._data, f, indent=4)
 
     def __getitem__(self, key):
-        return self.data[key]
+        return self._data[key]
     
     def __setitem__(self, key, value):
-        self.data[key] = value
+        self._data[key] = value
         self.save()
-
-
-def use_test_config(path=None):
-    """Switch to a temporary config for testing purposes."""
-    global config, config_dir, config_path, songs_dir, default_config
-    if path is not None:
-        config_dir = pathlib.Path(path)
-    else:
-        config_dir = pathlib.Path(__file__).parent / 'test_config'
-    default_config['search_paths'] = [str(config_dir / 'test_songs')]
-    config_path = config_dir / 'config.json'
-    songs_dir = config_dir / 'songs'
-    Config.singleton = None
-    config = Config.get_config()
 
 
 config = Config.get_config()

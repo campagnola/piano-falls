@@ -4,6 +4,7 @@ import time
 import threading
 import queue
 from .qt import QtCore
+from .config import config
 
 
 class FileStabilityMonitor(QtCore.QObject):
@@ -128,8 +129,7 @@ class FileManager(QtCore.QObject):
         list of str
             List of directory paths to search for music files
         """
-        from .config import config
-        return config.data.get('search_paths', ['~/Downloads'])
+        return config['search_paths']
 
     def _ensure_watching(self, path):
         """

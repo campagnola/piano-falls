@@ -8,7 +8,8 @@ import os
 import json
 import time
 import pathlib
-import hashlib
+from .midi import load_midi
+from .musicxml import load_musicxml
 from .qt import QtWidgets
 
 from .config import config
@@ -73,7 +74,7 @@ class SongInfo:
 
     def _get_json_path(self):
         """Get the path to this song's JSON metadata file."""
-        from .config import songs_dir
+        songs_dir = config.songs_dir
         return songs_dir / f"{self.sha}.json"
 
     def save(self):
@@ -116,7 +117,6 @@ class SongInfo:
         Removes files from known_files if they no longer exist or have different SHA.
         Updates last_verified timestamp and saves if changes were made.
         """
-        initial_count = len(self.known_files)
         files_to_remove = []
 
         for filepath in self.known_files:
@@ -136,8 +136,8 @@ class SongInfo:
             self.last_verified = time.time()
             self.save()
 
-            if files_to_remove:
-                print(f"Removed {len(files_to_remove)} invalid file(s) from {self.sha[:8]}...")
+        if files_to_remove:
+            print(f"Removed {len(files_to_remove)} invalid file(s) from {self.sha[:8]}...")
 
     def check_duplicate(self, filepath):
         """
@@ -257,7 +257,7 @@ class SongInfo:
             return False
 
         # Check if last verification is older than threshold
-        threshold_days = config.data.get('stale_threshold_days', 30)
+        threshold_days = config['stale_threshold_days']
         threshold_seconds = threshold_days * 24 * 60 * 60
         age_seconds = time.time() - self.last_verified
 
@@ -306,9 +306,6 @@ class SongInfo:
 
     def _load_song(self, filepath):
         """Load the Song instance from file."""
-        from .midi import load_midi
-        from .musicxml import load_musicxml
-
         ext = os.path.splitext(filepath)[1].lower()
         if ext in ['.mid', '.midi']:
             self._song = load_midi(filepath)

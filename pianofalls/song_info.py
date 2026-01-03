@@ -8,10 +8,11 @@ import os
 import json
 import time
 import pathlib
+
+from pianofalls.song_repository import SongRepository
 from .midi import load_midi
 from .musicxml import load_musicxml
 from .qt import QtWidgets
-
 from .config import config
 
 
@@ -66,16 +67,11 @@ class SongInfo:
         self._settings = default_song_config.copy()
 
         # Load existing data or save defaults
-        self._json_path = self._get_json_path()
+        self._json_path = config.songs_dir / f"{self.sha}.json"
         if self._json_path.exists():
             self.load()
         else:
             self.save()
-
-    def _get_json_path(self):
-        """Get the path to this song's JSON metadata file."""
-        songs_dir = config.songs_dir
-        return songs_dir / f"{self.sha}.json"
 
     def save(self):
         """
@@ -178,8 +174,6 @@ class SongInfo:
         new_filepath : str
             Path to the new duplicate file
         """
-        from .qt import QtWidgets, QtCore
-
         # Build list of existing files for display
         existing_files_text = '\n'.join(f'  • {f}' for f in self.known_files)
 
@@ -320,21 +314,16 @@ class SongInfo:
 
     # Settings management
 
-    def get_settings(self):
-        """Get all settings for this song."""
-        return self._settings.copy()
-
     def get_setting(self, name):
         """Get a specific setting value."""
-        return self._settings.get(name, default_song_config.get(name))
+        return self._settings[name]
 
     def update_settings(self, **kwargs):
         """Update settings and save to file."""
-        for key, value in kwargs.items():
-            if key in default_song_config:
-                self._settings[key] = value
-            else:
-                print(f"Warning: Unknown setting '{key}' ignored")
+        for key in kwargs:
+            if key not in default_song_config:
+                raise ValueError(f"Unknown setting '{key}'")
+        self._settings.update(kwargs)
 
         self.save()
 

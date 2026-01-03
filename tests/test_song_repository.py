@@ -4,11 +4,10 @@ Tests for the pianofalls.song_repository module.
 These tests verify song metadata management and SHA-based caching.
 """
 import pytest
-import tempfile
-import pathlib
 import json
 import hashlib
-from unittest.mock import Mock, patch
+import time
+from unittest.mock import patch
 
 from pianofalls import config
 from pianofalls.song_repository import SongRepository
@@ -19,7 +18,7 @@ from pianofalls.song_info import SongInfo
 def isolated_song_repository(tmp_path):
     """Create isolated SongRepository with test config."""
     # Setup isolated test config
-    config.use_test_config(path=tmp_path / 'test_config')
+    config.config.load(tmp_path / 'test_config' / 'config.json')
 
     # Reset SongRepository singleton
     SongRepository._instance = None
@@ -118,6 +117,38 @@ class TestSongRepositoryBasics:
         sr2 = SongRepository.get_instance()
 
         assert sr1 is sr2
+
+    def test_stale_cleanup_after_file_removed(
+        self,
+        isolated_song_repository,
+        sample_music_files,
+        isolated_config,
+    ):
+        """Test metadata retained after removal, then cleaned once stale."""
+        sr, songs_dir = isolated_song_repository
+        _, created_files = sample_music_files
+        song_path = created_files['song1.mid']
+
+        config.config.data['stale_threshold_days'] = 1 / 86400
+
+        song_info = sr.get_song_info(song_path)
+        sha = song_info.sha
+        metadata_path = songs_dir / f'{sha}.json'
+
+        assert metadata_path.exists()
+
+        song_path.unlink()
+        song_info.verify_files()
+
+        loaded_songs = sr.load_all_songs()
+        assert sha in loaded_songs
+        assert metadata_path.exists()
+
+        time.sleep(1.1)
+
+        loaded_songs = sr.load_all_songs()
+        assert sha not in loaded_songs
+        assert not metadata_path.exists()
 
     def test_direct_instantiation_raises_error(self, isolated_song_repository):
         """Test that direct instantiation raises RuntimeError."""

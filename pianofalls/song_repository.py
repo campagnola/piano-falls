@@ -10,8 +10,7 @@ import hashlib
 import pathlib
 import json
 import glob
-
-from .config import songs_dir
+from .config import config
 from .song_info import SongInfo
 
 
@@ -62,6 +61,7 @@ class SongRepository:
         self._song_cache = {}
 
         # Scan for JSON files in songs directory
+        songs_dir = config.config.songs_dir
         if not songs_dir.exists():
             return self._song_cache
 

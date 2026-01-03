@@ -16,3 +16,18 @@ def setup_test_config():
     ensuring that all tests use the test configuration settings.
     """
     config.use_test_config()
+
+
+@pytest.fixture(scope="session")
+def qapp():
+    """Create QApplication instance for Qt-dependent tests."""
+    import sys
+    from pianofalls.qt import QtWidgets
+
+    app = QtWidgets.QApplication.instance()
+    if app is None:
+        app = QtWidgets.QApplication(sys.argv)
+
+    yield app
+
+    # Note: Don't quit here as it may be needed by other tests

@@ -16,7 +16,7 @@ from pianofalls.qt import QtCore, QtTest
 
 
 @pytest.fixture
-def isolated_file_manager(tmp_path):
+def isolated_file_manager(tmp_path, qapp):
     """Create an isolated FileManager instance with test config."""
     # Setup isolated test config
     config.use_test_config(path=tmp_path / 'test_config')
@@ -93,7 +93,7 @@ class TestFileManagerBasics:
 class TestFileListingAndFiltering:
     """Test file listing and filtering functionality."""
 
-    def test_list_folder_contents_filters_correctly(self, isolated_file_manager, sample_music_files):
+    def test_list_folder_contents_filters_correctly(self, sample_music_files, isolated_file_manager):
         """Test that folder listing filters to only supported files."""
         fm, _ = isolated_file_manager
         music_dir, _ = sample_music_files
@@ -114,7 +114,7 @@ class TestFileListingAndFiltering:
         assert 'readme.txt' not in actual_files
         assert 'song6.mp3' not in actual_files
 
-    def test_list_folder_contents_sorts_correctly(self, isolated_file_manager, sample_music_files):
+    def test_list_folder_contents_sorts_correctly(self, sample_music_files, isolated_file_manager):
         """Test that directories come before files, then alphabetically."""
         fm, _ = isolated_file_manager
         music_dir, _ = sample_music_files
@@ -129,7 +129,7 @@ class TestFileListingAndFiltering:
         file_names = [p.name for p in contents[1:] if p.is_file()]
         assert file_names == sorted(file_names)
 
-    def test_list_invalid(self, isolated_file_manager, sample_music_files):
+    def test_list_invalid(self, sample_music_files, isolated_file_manager):
         """Test listing invalid paths raises appropriate errors."""
         fm, _ = isolated_file_manager
         _, created_files = sample_music_files
@@ -146,7 +146,7 @@ class TestFileListingAndFiltering:
 class TestFileOperations:
     """Test file operations like move, rename, delete."""
 
-    def test_move_file_success(self, isolated_file_manager, sample_music_files):
+    def test_move_file_success(self, sample_music_files, isolated_file_manager):
         """Test successful file move operation."""
         fm, _ = isolated_file_manager
         music_dir, created_files = sample_music_files
@@ -162,8 +162,20 @@ class TestFileOperations:
         signal_received = []
         fm.file_changed.connect(lambda path: signal_received.append(path))
 
+        # verify file is present in old directory_list
+        assert old_path.parent in fm.directory_files 
+        assert old_path in fm.directory_files[old_path.parent]
+
         # Perform move
         fm.move_file(old_path, new_path)
+
+
+        # Wait for asynchronous signals
+        QtTest.QTest.qWait(100)
+
+        # assert file is now present in new directory_list
+        assert new_path.parent in fm.directory_files
+        assert new_path in fm.directory_files[new_path.parent]
 
         # Verify file was moved
         assert not old_path.exists()
@@ -175,7 +187,7 @@ class TestFileOperations:
         assert str(old_path.parent) in signal_received
         assert str(new_path.parent) in signal_received
 
-    def test_move_file_destination_exists(self, isolated_file_manager, sample_music_files):
+    def test_move_file_destination_exists(self, sample_music_files, isolated_file_manager):
         """Test move operation fails when destination exists."""
         fm, _ = isolated_file_manager
         music_dir, created_files = sample_music_files
@@ -186,7 +198,7 @@ class TestFileOperations:
         with pytest.raises(FileExistsError):
             fm.move_file(old_path, new_path)
 
-    def test_rename_file_success(self, isolated_file_manager, sample_music_files):
+    def test_rename_file_success(self, sample_music_files, isolated_file_manager):
         """Test successful file rename operation."""
         fm, _ = isolated_file_manager
         music_dir, created_files = sample_music_files
@@ -203,6 +215,9 @@ class TestFileOperations:
 
         new_path = music_dir / 'renamed_song.mid'
 
+        # Wait for asynchronous signals
+        QtTest.QTest.qWait(100)
+
         # Verify file was renamed
         assert not old_path.exists()
         assert new_path.exists()
@@ -211,7 +226,7 @@ class TestFileOperations:
         # Verify signal was emitted
         assert signal_received == [str(music_dir)]
 
-    def test_delete_file_success(self, isolated_file_manager, sample_music_files):
+    def test_delete_file_success(self, sample_music_files, isolated_file_manager):
         """Test successful file deletion."""
         fm, _ = isolated_file_manager
         music_dir, created_files = sample_music_files
@@ -224,6 +239,9 @@ class TestFileOperations:
 
         # Perform delete
         fm.delete_file(target_path)
+
+        # Wait for asynchronous signals
+        QtTest.QTest.qWait(100)
 
         # Verify file was deleted
         assert not target_path.exists()

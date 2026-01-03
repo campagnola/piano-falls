@@ -54,7 +54,7 @@ class FileStabilityMonitor(QtCore.QObject):
                 last_size, last_time = monitor_files[file_path]
                 if last_size != current_size:
                     monitor_files[file_path] = (current_size, now)
-                if now - last_time >= self.stability_duration:
+                elif now - last_time >= self.stability_duration:
                     # File is stable, emit signal
                     self.file_ready.emit(str(file_path))
                     del monitor_files[file_path]
@@ -106,6 +106,7 @@ class FileManager(QtCore.QObject):
         # File stability monitoring
         self.hidden_files = set()  # Files not yet stable/ready for listing
         self.recently_moved_files = set()  # Files recently moved, bypass stability checks
+        self.directory_files = {}  # Track all files per directory: {dir_path: set_of_files}
         self.stability_monitor = FileStabilityMonitor()
 
         # Connect to stability monitor signals
@@ -142,10 +143,13 @@ class FileManager(QtCore.QObject):
             Directory path to watch
         """
         path = pathlib.Path(os.path.expanduser(str(path)))
-        if path.exists() and path.is_dir():
-            path_str = str(path)
-            if path_str not in self.file_watcher.directories():
-                self.file_watcher.addPath(path_str)
+        path_str = str(path)
+        if path_str not in self.file_watcher.directories():
+            assert path.exists() and path.is_dir(), f"Cannot watch non-existent directory: {path}"
+            self.file_watcher.addPath(path_str)
+
+            # Initialize directory state with current files
+            self.directory_files[path] = set(self.list_folder_contents(path))
 
     def list_folder_contents(self, path):
         """
@@ -346,44 +350,42 @@ class FileManager(QtCore.QObject):
             Directory path that changed
         """
         dir_path = pathlib.Path(dir_path)
+        current_files = set(self.list_folder_contents(dir_path))
 
-        try:
-            current_files = set()
-            for item in dir_path.iterdir():
-                if item.is_file() and self._is_supported_file(item):
-                    current_files.add(item)
-        except (OSError, PermissionError):
-            # Directory not accessible
-            return
+        # Get previously known files for this directory
+        previous_files = self.directory_files[dir_path]
 
-        # Get previously known files for this directory (from hidden files)
-        previously_hidden = {path for path in self.hidden_files if path.parent == dir_path}
+        # Update tracking with current state
+        self.directory_files[dir_path] = current_files
 
         # Find new files and removed files
-        new_files = current_files - previously_hidden
-        removed_files = previously_hidden - current_files
+        new_files = current_files - previous_files
+        removed_files = previous_files - current_files
 
-        # Handle removed files - emit immediate signals
+        # Track whether we should emit a signal for this directory change
+        should_emit_signal = False
+
+        # Handle removed files
         if removed_files:
             # Clean up tracking for removed files
             for removed_file in removed_files:
                 self.hidden_files.discard(removed_file)
                 self.recently_moved_files.discard(removed_file)
-
-            # Emit change signal for directory
-            self.file_changed.emit(str(dir_path))
+            should_emit_signal = True
 
         # Handle new files
         for new_file in new_files:
             if new_file in self.recently_moved_files:
                 # This is a recently moved file, make it immediately available
                 self.recently_moved_files.discard(new_file)
-                # Don't hide it, emit change signal immediately
-                self.file_changed.emit(str(dir_path))
+                should_emit_signal = True
             else:
-                # This is a new file that needs stability monitoring
+                # This is a genuinely new file that needs stability monitoring
                 self.hidden_files.add(new_file)
                 self.stability_monitor.monitor_file(new_file)
+
+        if should_emit_signal:
+            self.file_changed.emit(str(dir_path))
 
     def _on_file_ready(self, file_path):
         """

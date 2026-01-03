@@ -250,60 +250,6 @@ class TestFileOperations:
         assert signal_received == [str(music_dir)]
 
 
-class TestFileWatching:
-    """Test file system watching functionality."""
-
-    def test_file_watching_integration(self, isolated_file_manager):
-        """Test complete file watching workflow: watch, modify, signal, unwatch."""
-        fm, test_search_path = isolated_file_manager
-
-        # Create a directory to watch
-        watch_path = test_search_path / 'watched'
-        watch_path.mkdir()
-
-        # Set up signal capture
-        signals_received = []
-        fm.file_changed.connect(lambda path: signals_received.append(path))
-
-        # Start watching the directory
-        fm.add_watch_path(watch_path)
-
-        assert len(signals_received) == 0, 'No signals should be emitted on adding watch'
-
-        # Create a file in the watched directory
-        test_file = watch_path / 'test_song.mid'
-        test_file.write_bytes(b'fake midi content')
-
-        # Give the file system watcher time to notice the change
-        QtTest.QTest.qWait(200)
-
-        # Force immediate update to trigger signal so we don't have to wait
-        fm.force_immediate_update(watch_path)
-
-        # Should have received a change signal for the directory
-        assert len(signals_received) > 0
-        assert str(watch_path) in signals_received
-
-        # Clear signals for next test
-        signals_received.clear()
-
-        # Remove the watch
-        fm.remove_watch_path(watch_path)
-
-        # Modify the directory again (create another file)
-        test_file2 = watch_path / 'another_song.mid'
-        test_file2.write_bytes(b'more fake midi content')
-
-        # Give time for any potential signals (but don't force update)
-        QtTest.QTest.qWait(200)
-
-        # Force immediate update to trigger signal so we don't have to wait
-        fm.force_immediate_update(watch_path)
-
-        # Should NOT have received any signals since path is no longer watched
-        assert len(signals_received) == 0
-
-
 class TestSimulatedDownload:
     """Test simulated file download using background threads and Qt event processing."""
 

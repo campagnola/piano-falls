@@ -1,9 +1,65 @@
 import os
 import pathlib
-import shutil
+import time
+import threading
+import queue
 from .qt import QtCore
-from .file_stability_monitor import FileStabilityMonitor
-from .song_repository import SongRepository
+
+
+class FileStabilityMonitor(QtCore.QObject):
+    """
+    Background monitoring for file stability.
+
+    Monitors files for size stability and emits file_ready when files
+    have been stable for the configured duration.
+    """
+    # Signal emitted when a file becomes stable and ready for use
+    file_ready = QtCore.Signal(str)  # file path that became ready
+
+    # Configuration constants
+    stability_duration = 3.0  # seconds - how long size must be unchanged
+    check_interval = 0.5      # seconds - how often to check file sizes
+
+    def __init__(self):
+        super().__init__()
+        self.monitor_queue = queue.Queue()  # Files to monitor
+        self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self.monitor_thread.start()
+
+    def monitor_file(self, file_path):
+        """Queue a file for monitoring."""
+        self.monitor_queue.put(pathlib.Path(file_path))
+
+    def _monitor_loop(self):
+        """
+        Background thread main loop - monitors file stability.
+        """
+        monitor_files = {}
+        while True:
+            # Process any new files to monitor
+            while self.monitor_queue.qsize() > 0:
+                monitor_files[self.monitor_queue.get()] = [None, None]
+
+            # Check stability of currently monitored files
+            for file_path in list(monitor_files.keys()):
+                try:
+                    current_size = file_path.stat().st_size
+                except OSError:
+                    # File not accessible, remove from monitoring
+                    del monitor_files[file_path]
+                    continue
+
+                # check size stability
+                now = time.time()
+                last_size, last_time = monitor_files[file_path]
+                if last_size != current_size:
+                    monitor_files[file_path] = (current_size, now)
+                if now - last_time >= self.stability_duration:
+                    # File is stable, emit signal
+                    self.file_ready.emit(str(file_path))
+                    del monitor_files[file_path]
+
+            time.sleep(self.check_interval)
 
 
 class FileManager(QtCore.QObject):
@@ -11,20 +67,21 @@ class FileManager(QtCore.QObject):
     Centralized file manager providing file operations and change notifications.
 
     Manages:
-    - File system watching with stability monitoring
+    - File system watching with integrated stability monitoring
     - File operations (move, rename, delete)
     - File type filtering
     - Search path management
     - Change notifications via Qt signals
+    - Coordination with background file stability monitoring
 
     Implements singleton pattern to ensure consistent state across the application.
     """
 
-    # Signal emitted when file operations cause changes that should update UI
+    # Signal emitted when directories are added/removed, files are removed, or files become ready
     file_changed = QtCore.Signal(str)  # path that changed
 
     # Supported music file extensions
-    SUPPORTED_EXTENSIONS = {'.mid', '.midi', '.mxl', '.xml', '.musicxml'}
+    supported_extensions = {'.mid', '.midi', '.mxl', '.xml', '.musicxml'}
 
     _instance = None
 
@@ -44,11 +101,19 @@ class FileManager(QtCore.QObject):
 
         # File system watching
         self.file_watcher = QtCore.QFileSystemWatcher()
+        self.file_watcher.directoryChanged.connect(self._on_directory_changed)
+
+        # File stability monitoring
+        self.hidden_files = set()  # Files not yet stable/ready for listing
+        self.recently_moved_files = set()  # Files recently moved, bypass stability checks
         self.stability_monitor = FileStabilityMonitor()
 
-        # Connect file watching signals
-        self.file_watcher.directoryChanged.connect(self.stability_monitor.notify_directory_changed)
-        self.stability_monitor.directory_stable.connect(self._on_directory_stable)
+        # Connect to stability monitor signals
+        self.stability_monitor.file_ready.connect(self._on_file_ready)
+
+        # Auto-watch all search paths
+        for search_path in self.get_search_paths():
+            self._ensure_watching(search_path)
 
         # Set this instance as the singleton
         FileManager._instance = self
@@ -65,11 +130,29 @@ class FileManager(QtCore.QObject):
         from .config import config
         return config.data.get('search_paths', ['~/Downloads'])
 
+    def _ensure_watching(self, path):
+        """
+        Ensure a directory is being watched by QFileSystemWatcher.
+
+        Safely adds the directory to the watcher if it exists and isn't already watched.
+
+        Parameters
+        ----------
+        path : str or pathlib.Path
+            Directory path to watch
+        """
+        path = pathlib.Path(os.path.expanduser(str(path)))
+        if path.exists() and path.is_dir():
+            path_str = str(path)
+            if path_str not in self.file_watcher.directories():
+                self.file_watcher.addPath(path_str)
+
     def list_folder_contents(self, path):
         """
         List files in a folder after applying type filtering.
 
         Filters to only include supported music file types and directories.
+        Excludes new files that are still being written.
 
         Parameters
         ----------
@@ -87,6 +170,9 @@ class FileManager(QtCore.QObject):
         if not path.is_dir():
             raise NotADirectoryError(f"Path is not a directory: {path}")
 
+        # Auto-watch this directory for changes
+        self._ensure_watching(path)
+
         contents = []
         try:
             for item in path.iterdir():
@@ -94,8 +180,9 @@ class FileManager(QtCore.QObject):
                     # Include all directories
                     contents.append(item)
                 elif item.is_file() and self._is_supported_file(item):
-                    # Include only supported music files
-                    contents.append(item)
+                    # Include only supported music files that are not hidden
+                    if item not in self.hidden_files:
+                        contents.append(item)
         except (OSError, PermissionError):
             # Directory not accessible
             pass
@@ -120,9 +207,6 @@ class FileManager(QtCore.QObject):
         """
         Move a file with immediate notifications.
 
-        Performs the move operation and emits immediate change notifications
-        for UI update. Does not wait for file stability.
-
         Parameters
         ----------
         old_path : str or pathlib.Path
@@ -142,17 +226,19 @@ class FileManager(QtCore.QObject):
 
         if new_path.exists():
             raise FileExistsError(f"Destination already exists: {new_path}")
+        if not new_path.parent.exists():
+            raise FileNotFoundError(f"Destination directory does not exist: {new_path.parent}")
 
-        # Ensure destination directory exists
-        new_path.parent.mkdir(parents=True, exist_ok=True)
+        # Auto-watch source and dest directory
+        self._ensure_watching(old_path.parent)
+        self._ensure_watching(new_path.parent)
+
+        # Track this as a moved file for immediate processing
+        self.recently_moved_files.add(new_path)
 
         # Perform the move
         old_path.rename(new_path)
 
-        # Force immediate UI update for both directories
-        self.stability_monitor.force_immediate_update(old_path.parent)
-        if new_path.parent != old_path.parent:
-            self.stability_monitor.force_immediate_update(new_path.parent)
 
     def rename_file(self, old_path, new_name):
         """
@@ -180,10 +266,7 @@ class FileManager(QtCore.QObject):
 
     def delete_file(self, path):
         """
-        Delete a file or directory with SongInfo verification and immediate notifications.
-
-        For files that are tracked by SongInfo, this will trigger verification
-        to clean up metadata. Emits immediate change notifications.
+        Delete a file or directory with immediate notifications.
 
         Parameters
         ----------
@@ -198,11 +281,15 @@ class FileManager(QtCore.QObject):
         path = pathlib.Path(path)
         parent_dir = path.parent
 
-        path.unlink()
+        # Auto-watch the parent directory
+        self._ensure_watching(parent_dir)
 
-        # Force immediate UI update
-        self.stability_monitor.force_immediate_update(parent_dir)
-        self.emit_change_signal(parent_dir)
+        # Remove from tracking sets if present
+        self.hidden_files.discard(path)
+        self.recently_moved_files.discard(path)
+
+        # Perform the delete
+        path.unlink()
 
     def add_watch_path(self, path):
         """
@@ -244,18 +331,155 @@ class FileManager(QtCore.QObject):
         bool
             True if file extension is supported
         """
-        return path.suffix.lower() in self.SUPPORTED_EXTENSIONS
+        return path.suffix.lower() in self.supported_extensions
 
-    def _on_directory_stable(self, dir_path):
+    def _on_directory_changed(self, dir_path):
         """
-        Handle directory stability notifications from FileStabilityMonitor.
+        Handle directory change notifications from QFileSystemWatcher.
 
-        Called when files in a directory have been stable for the configured
-        duration. Emits change signal for UI updates.
+        Scans the directory for new files and starts monitoring them.
+        Emits immediate signals for file removals.
 
         Parameters
         ----------
         dir_path : str
-            Directory path that became stable
+            Directory path that changed
         """
-        self.emit_change_signal(dir_path)
+        dir_path = pathlib.Path(dir_path)
+
+        try:
+            current_files = set()
+            for item in dir_path.iterdir():
+                if item.is_file() and self._is_supported_file(item):
+                    current_files.add(item)
+        except (OSError, PermissionError):
+            # Directory not accessible
+            return
+
+        # Get previously known files for this directory (from hidden files)
+        previously_hidden = {path for path in self.hidden_files if path.parent == dir_path}
+
+        # Find new files and removed files
+        new_files = current_files - previously_hidden
+        removed_files = previously_hidden - current_files
+
+        # Handle removed files - emit immediate signals
+        if removed_files:
+            # Clean up tracking for removed files
+            for removed_file in removed_files:
+                self.hidden_files.discard(removed_file)
+                self.recently_moved_files.discard(removed_file)
+
+            # Emit change signal for directory
+            self.file_changed.emit(str(dir_path))
+
+        # Handle new files
+        for new_file in new_files:
+            if new_file in self.recently_moved_files:
+                # This is a recently moved file, make it immediately available
+                self.recently_moved_files.discard(new_file)
+                # Don't hide it, emit change signal immediately
+                self.file_changed.emit(str(dir_path))
+            else:
+                # This is a new file that needs stability monitoring
+                self.hidden_files.add(new_file)
+                self.stability_monitor.monitor_file(new_file)
+
+    def _on_file_ready(self, file_path):
+        """
+        Handle file_ready signals from FileStabilityMonitor.
+
+        Called when a file has become stable and ready for use.
+        Unhides the file and emits a change signal.
+
+        Parameters
+        ----------
+        file_path : str
+            File path that became ready
+        """
+        file_path = pathlib.Path(file_path)
+
+        # Unhide the file
+        self.hidden_files.discard(file_path)
+
+        # Emit change signal for the directory
+        self.file_changed.emit(str(file_path.parent))
+
+    def force_immediate_update(self, dir_path):
+        """
+        Force an immediate update for a directory, bypassing stability monitoring.
+
+        This should be called for user-initiated changes or in tests where we want
+        immediate visual feedback rather than waiting for stability.
+
+        This method is safe to call from the Qt main thread.
+
+        Parameters
+        ----------
+        dir_path : str or pathlib.Path
+            Path to directory that should be updated immediately
+        """
+        # Emit signal immediately without waiting for stability
+        self.file_changed.emit(str(dir_path))
+
+
+
+class FileState:
+    """
+    Tracks size and stability state for a single file.
+
+    Attributes
+    ----------
+    path : pathlib.Path
+        File being monitored
+    current_size : int
+        Current file size in bytes
+    stable_since : float
+        Timestamp (time.time()) when stability period started
+    """
+
+    def __init__(self, path, initial_size):
+        """
+        Initialize file state tracking.
+
+        Parameters
+        ----------
+        path : pathlib.Path
+            File to track
+        initial_size : int
+            Initial file size in bytes
+        """
+        self.path = pathlib.Path(path)
+        self.current_size = initial_size
+        self.stable_since = time.time()
+
+    def update_size(self, new_size):
+        """
+        Update file size and reset stability timer if changed.
+
+        Parameters
+        ----------
+        new_size : int
+            New file size in bytes
+        """
+        if new_size != self.current_size:
+            # Size changed, reset stability timer
+            self.current_size = new_size
+            self.stable_since = time.time()
+        # If size unchanged, stable_since remains the same
+
+    def is_stable(self, duration):
+        """
+        Check if file has been stable for at least the specified duration.
+
+        Parameters
+        ----------
+        duration : float
+            Required stability duration in seconds
+
+        Returns
+        -------
+        bool
+            True if file size has been unchanged for at least duration seconds
+        """
+        return time.time() - self.stable_since >= duration

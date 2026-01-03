@@ -259,8 +259,8 @@ class TestFileWatching:
         # Give the file system watcher time to notice the change
         QtTest.QTest.qWait(200)
 
-        # Force stability check to trigger signal so we don't have to wait
-        fm.stability_monitor.force_immediate_update(watch_path)
+        # Force immediate update to trigger signal so we don't have to wait
+        fm.force_immediate_update(watch_path)
 
         # Should have received a change signal for the directory
         assert len(signals_received) > 0
@@ -279,8 +279,8 @@ class TestFileWatching:
         # Give time for any potential signals (but don't force update)
         QtTest.QTest.qWait(200)
 
-        # Force stability check to trigger signal so we don't have to wait
-        fm.stability_monitor.force_immediate_update(watch_path)
+        # Force immediate update to trigger signal so we don't have to wait
+        fm.force_immediate_update(watch_path)
 
         # Should NOT have received any signals since path is no longer watched
         assert len(signals_received) == 0
@@ -326,8 +326,19 @@ class TestSimulatedDownload:
 
         assert len(signals_received) == 0, 'No file change signals should be emitted during download'
 
+        # Verify file exists on disk but is hidden from listing during instability
+        assert download_path.exists(), 'Downloaded file should exist on disk'
+        folder_contents = fm.list_folder_contents(test_search_path)
+        file_names = {p.name for p in folder_contents}
+        assert 'downloading.mid' not in file_names, 'Downloaded file should be hidden from listing during instability'
+
         start_time = time.time()
         while len(signals_received) == 0 and (time.time() - start_time) < 4.0:
             QtTest.QTest.qWait(200)
 
         assert signals_received == [str(test_search_path)], 'File change signal should be emitted after download completes'
+
+        # Verify file is now visible in listing after stability is achieved
+        folder_contents_after = fm.list_folder_contents(test_search_path)
+        file_names_after = {p.name for p in folder_contents_after}
+        assert 'downloading.mid' in file_names_after, 'Downloaded file should be visible in listing after stability'

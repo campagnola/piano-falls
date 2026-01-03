@@ -162,20 +162,17 @@ class TestFileOperations:
         signal_received = []
         fm.file_changed.connect(lambda path: signal_received.append(path))
 
-        # verify file is present in old directory_list
-        assert old_path.parent in fm.directory_files 
-        assert old_path in fm.directory_files[old_path.parent]
+        # verify file is present in old directory list
+        assert old_path in fm.list_folder_contents(old_path.parent)
 
         # Perform move
         fm.move_file(old_path, new_path)
-
 
         # Wait for asynchronous signals
         QtTest.QTest.qWait(100)
 
         # assert file is now present in new directory_list
-        assert new_path.parent in fm.directory_files
-        assert new_path in fm.directory_files[new_path.parent]
+        assert new_path in fm.list_folder_contents(new_path.parent)
 
         # Verify file was moved
         assert not old_path.exists()

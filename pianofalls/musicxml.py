@@ -263,7 +263,7 @@ class MusicXMLParser:
                 offset = ev.start_time
             if offset is not None:
                 ev.start_time -= offset
-            assert ev.duration is not None
+            assert ev.duration is not None, f"Never initialized note duration: {ev}"
 
         return merged_notes
 

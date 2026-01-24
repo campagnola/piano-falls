@@ -195,6 +195,7 @@ class Note(VoiceEvent):
     repr_keys = ['pitch'] + VoiceEvent.repr_keys
     def __init__(self, pitch, **kwds):
         self.pitch = pitch
+        self.played = False  # Track whether note has been played by user
         super().__init__(**kwds)
 
 

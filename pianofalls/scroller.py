@@ -23,6 +23,8 @@ class TimeScroller(QtCore.QObject):
 
         self.set_scroll_mode('wait')
 
+        self.active_loops = []
+
         self.stop_thread = False
         self.thread = threading.Thread(target=self.auto_scroll_loop, daemon=True)
         self.thread.start()
@@ -83,6 +85,17 @@ class TimeScroller(QtCore.QObject):
     def scroll_by(self, delta):
         self.set_time(self.target_time + delta)
 
+    def set_loops(self, loops):
+        """Set the active loop regions from a list of loop dicts."""
+        self.active_loops = [l for l in loops if l.get('active')]
+
+    def _check_loop_crossing(self, prev_time, new_time):
+        """Return the loop start time if new_time crosses an active loop end, else None."""
+        for loop in self.active_loops:
+            if prev_time < loop['end'] <= new_time:
+                return loop['start']
+        return None
+
     def connect_midi_input(self, midi_input):
         midi_input.message.connect(self.on_midi_message)
 
@@ -111,7 +124,12 @@ class TimeScroller(QtCore.QObject):
                 continue
             
             if self.scrolling:
-                self.target_time = self.scroll_mode.update(self.current_time, dt, self.scroll_speed)
+                new_target = self.scroll_mode.update(self.current_time, dt, self.scroll_speed)
+                loop_start = self._check_loop_crossing(self.current_time, new_target)
+                if loop_start is not None:
+                    self.set_time(loop_start)
+                else:
+                    self.target_time = new_target
 
             # Exponentially approach target
             if self.scroll_tau > 0:

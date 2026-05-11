@@ -655,7 +655,7 @@ class Measure:
 
 class MusicXMLPart(Part):
     def __init__(self, info, measures: List[Measure]):
-        name = info.get('name', f'Part {info["id"]}')
+        name = info.get('name') or f'Part {info["id"]}'
         Part.__init__(self, name=name)
         self.info = info
         self.measures = measures

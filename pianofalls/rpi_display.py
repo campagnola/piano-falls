@@ -173,7 +173,7 @@ class RPiRenderer:
         for display_evt in display_events:
             if isinstance(display_evt.event, Barline):
                 start_y_pixel = y_pixel_offset + frame.shape[0] - (row_scale * display_evt.y_start)
-                draw_interpolated_line(frame, start_y_pixel-1, 0, frame.shape[1], np.array([4, 4, 4]))
+                draw_interpolated_line(frame, start_y_pixel-1, 0, frame.shape[1], np.array([12, 12, 12]))
 
         # Render notes
         for display_evt in display_events:

@@ -1,5 +1,6 @@
 from .qt import QtWidgets, QtCore
 from .tracklist import TrackList
+from .loop_list import LoopList
 
 
 class SongInfoPanel(QtWidgets.QWidget):
@@ -10,6 +11,8 @@ class SongInfoPanel(QtWidgets.QWidget):
     transpose_changed = QtCore.Signal(int)
     colors_changed = QtCore.Signal()
     modes_changed = QtCore.Signal()
+    loops_changed = QtCore.Signal(list)
+    add_loop_requested = QtCore.Signal()
 
     def __init__(self):
         super().__init__()
@@ -58,6 +61,10 @@ class SongInfoPanel(QtWidgets.QWidget):
         self.track_list = TrackList()
         self.layout.addWidget(self.track_list)
 
+        # Loop list
+        self.loop_list = LoopList()
+        self.layout.addWidget(self.loop_list)
+
         # Track current song info for settings persistence
         self.song_info = None
 
@@ -67,6 +74,8 @@ class SongInfoPanel(QtWidgets.QWidget):
         self.transpose_spin.valueChanged.connect(self.on_transpose_changed)
         self.track_list.colors_changed.connect(self.colors_changed.emit)
         self.track_list.modes_changed.connect(self.modes_changed.emit)
+        self.loop_list.loops_changed.connect(self.loops_changed.emit)
+        self.loop_list.add_requested.connect(self.add_loop_requested.emit)
 
     def on_speed_changed(self, value):
         self.speed_changed.emit(value / 100)
@@ -115,9 +124,14 @@ class SongInfoPanel(QtWidgets.QWidget):
                 transpose=self.transpose_spin.value()
             )
 
+    def add_loop(self, current_time):
+        """Add a new loop at the given time (in seconds)."""
+        self.loop_list.add_loop(current_time)
+
     def set_song(self, song_info):
-        """Set the song for the track list."""
+        """Set the song for the track list and loop list."""
         self.track_list.set_song(song_info)
+        self.loop_list.set_song(song_info)
 
     def restore_modes(self, song_info):
         """Restore track modes from song settings."""

@@ -177,6 +177,12 @@ def load_midi(filename:str) -> Song:
             current_notes[note_key].duration = note_end - note_start
             del current_notes[note_key]
 
+    # Close any notes that never received a note_off (truncated/malformed MIDI)
+    if current_notes and messages:
+        last_time = messages[-1]['time']
+        for note in current_notes.values():
+            note.duration = max(last_time - note.start_time, 0)
+
     # force start at 0
     # DISABLED for test verification - we want raw MuseScore output
     # start_time = min([note.start_time for note in notes])

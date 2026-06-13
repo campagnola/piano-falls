@@ -263,7 +263,7 @@ class MusicXMLParser:
                 offset = ev.start_time
             if offset is not None:
                 ev.start_time -= offset
-            assert ev.duration is not None
+            assert ev.duration is not None, f"Never initialized note duration: {ev}"
 
         return merged_notes
 
@@ -655,7 +655,7 @@ class Measure:
 
 class MusicXMLPart(Part):
     def __init__(self, info, measures: List[Measure]):
-        name = info.get('name', f'Part {info["id"]}')
+        name = info.get('name') or f'Part {info["id"]}'
         Part.__init__(self, name=name)
         self.info = info
         self.measures = measures
@@ -706,12 +706,22 @@ class MusicXMLPart(Part):
 
             # we now have a previous note + grace notes + next note
             # first steal time from other notes and give to grace notes
+
+            # Pre-compute per-grace stolen time for default grace notes.
+            # MuseScore keeps 50% of the target note's duration for the main note and
+            # splits the other 50% equally among all N default grace notes, regardless of N.
+            n_default = sum(1 for g in grace_notes if g.stolen_time == 'default')
+            if n_default > 0 and next_note is not None:
+                default_stolen_per_grace = next_note.duration_quarters * 0.5 / n_default
+            else:
+                default_stolen_per_grace = 0.25
+
             gn_start_quarters = grace_notes[0].start_quarters
             for i,gn in enumerate(grace_notes):
                 if gn.stolen_time == 'default':
-                    # we can decide how to render the grace note; no timing was specified
+                    # no timing was specified; apply the 50%-kept rule
                     stolen_note = next_note
-                    stolen_duration_quarters = 0.25
+                    stolen_duration_quarters = default_stolen_per_grace
                     if gn.grace_slash:
                         stolen_duration_quarters *= 0.5 * 0.85
                 else:

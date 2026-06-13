@@ -23,7 +23,7 @@ class MainWindow(QtWidgets.QWidget):
         # Create display model - central source of truth for what to display
         self.display_model = DisplayModel()
 
-        self.scroller = TimeScroller()
+        self.scroller = TimeScroller(display_model=self.display_model)
 
         self.layout = QtWidgets.QGridLayout()
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -78,6 +78,9 @@ class MainWindow(QtWidgets.QWidget):
         self.song_info_panel.transpose_changed.connect(self.on_transpose_changed)
         self.song_info_panel.colors_changed.connect(self.update_track_colors)
         self.song_info_panel.modes_changed.connect(self.update_track_modes)
+        self.song_info_panel.loops_changed.connect(self.view.waterfall.set_loops)
+        self.song_info_panel.loops_changed.connect(self.scroller.set_loops)
+        self.song_info_panel.add_loop_requested.connect(self._on_add_loop_requested)
         self.view.wheel_event.connect(self.view_wheel_event)
         self.overview.clicked.connect(self.scroller.set_time)
         self.file_tree.file_double_clicked.connect(self.load)
@@ -147,6 +150,9 @@ class MainWindow(QtWidgets.QWidget):
 
         self.view.focusWidget()
         self.song_changed.emit(song_info.get_song())
+
+    def _on_add_loop_requested(self):
+        self.song_info_panel.add_loop(self.scroller.current_time)
 
     def connect_midi_input(self, midi_input):
         self.view.connect_midi_input(midi_input)

@@ -8,9 +8,10 @@ from .config import config
 class TimeScroller(QtCore.QObject):
     current_time_changed = QtCore.Signal(float)
 
-    def __init__(self):
+    def __init__(self, display_model):
         super().__init__()
         self.current_time = 0.0
+        self.display_model = display_model
 
         self.song = None
 
@@ -21,6 +22,8 @@ class TimeScroller(QtCore.QObject):
         self.scroll_mode = None
 
         self.set_scroll_mode('wait')
+
+        self.active_loops = []
 
         self.stop_thread = False
         self.thread = threading.Thread(target=self.auto_scroll_loop, daemon=True)
@@ -37,8 +40,8 @@ class TimeScroller(QtCore.QObject):
         """Set the song from a SongInfo instance."""
         self.song = song_info.get_song()
         self.song_info = song_info
+        self.set_time(-2)  # Reset time before setting song on scroll mode
         self.scroll_mode.set_song(self.song)
-        self.set_time(-2)
         self.set_scrolling(True)
 
     def set_scroll_speed(self, speed):
@@ -82,6 +85,17 @@ class TimeScroller(QtCore.QObject):
     def scroll_by(self, delta):
         self.set_time(self.target_time + delta)
 
+    def set_loops(self, loops):
+        """Set the active loop regions from a list of loop dicts."""
+        self.active_loops = [l for l in loops if l.get('active')]
+
+    def _check_loop_crossing(self, prev_time, new_time):
+        """Return the loop start time if new_time crosses an active loop end, else None."""
+        for loop in self.active_loops:
+            if prev_time < loop['end'] <= new_time:
+                return loop['start']
+        return None
+
     def connect_midi_input(self, midi_input):
         midi_input.message.connect(self.on_midi_message)
 
@@ -110,7 +124,12 @@ class TimeScroller(QtCore.QObject):
                 continue
             
             if self.scrolling:
-                self.target_time = self.scroll_mode.update(self.current_time, dt, self.scroll_speed)
+                new_target = self.scroll_mode.update(self.current_time, dt, self.scroll_speed)
+                loop_start = self._check_loop_crossing(self.current_time, new_target)
+                if loop_start is not None:
+                    self.set_time(loop_start)
+                else:
+                    self.target_time = new_target
 
             # Exponentially approach target
             if self.scroll_tau > 0:
@@ -201,7 +220,17 @@ class ScrollMode:
         """Reset played state of future notes based on current time and track modes
         Also sets next_note_index to the first note after current time.
         """
-        self.next_note_index = self.song.index_of_note_starting_at(self.scroller.target_time)
+        if self.song is None:
+            self.next_note_index = 0
+            self.next_autoplay_check_index = 0
+            return
+
+        index = self.song.index_of_note_starting_at(self.scroller.target_time)
+        if index is None:
+            # We're past all notes, set to end of song
+            self.next_note_index = len(self.song.notes)
+        else:
+            self.next_note_index = index
         self.next_autoplay_check_index = self.next_note_index
 
         # mark next event + all following events as unplayed, but only for 'player' tracks
@@ -212,6 +241,9 @@ class ScrollMode:
             # mark note as unplayed if it's in a 'player' track and starts at or after the current time
             note.played = (i < self.next_note_index) or (track_mode != 'player')
 
+        # Notify display model that played states changed
+        self.scroller.display_model.notify_notes_played()
+
     def check_and_mark_played_notes(self, current_time):
         """Check MIDI input and mark matching notes as played.
         Returns list of recent note_on messages.
@@ -220,6 +252,7 @@ class ScrollMode:
         recent_presses = [msg for msg in recent_messages if msg.type == 'note_on']
 
         # check if any recent key presses match upcoming notes
+        any_marked = False
         for msg in recent_presses:
             matched_time = None
             for note in self.song.notes[self.next_note_index:]:
@@ -234,6 +267,11 @@ class ScrollMode:
                     if matched_time is None or matched_time == note.start_time:
                         note.played = True
                         matched_time = note.start_time
+                        any_marked = True
+
+        # Notify display model if any notes were marked as played
+        if any_marked:
+            self.scroller.display_model.notify_notes_played()
 
         return recent_presses
 
@@ -286,6 +324,7 @@ class TempoScrollMode(ScrollMode):
 
         # Mark notes as played once they've passed (for player tracks only)
         # This ensures missed notes are marked as played in tempo mode
+        any_marked = False
         while self.next_note_index < len(self.song.notes):
             note = self.song.notes[self.next_note_index]
             if note.start_time < new_time:
@@ -294,9 +333,14 @@ class TempoScrollMode(ScrollMode):
                 # Mark as played if it's a player track (autoplay tracks are already marked)
                 if track_mode == 'player':
                     note.played = True
+                    any_marked = True
                 self.next_note_index += 1
             else:
                 break
+
+        # Notify display model if any notes were marked as played
+        if any_marked:
+            self.scroller.display_model.notify_notes_played()
 
         # Handle autoplay notes
         self.handle_autoplay(new_time)

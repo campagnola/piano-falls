@@ -73,6 +73,7 @@ class MainWindow(QtWidgets.QWidget):
         self.scroller.current_time_changed.connect(self.time_changed)
         self.ctrl_panel.autoplay_volume_changed.connect(self.scroller.set_autoplay_volume)
         self.ctrl_panel.scroll_mode_changed.connect(self.scroller.set_scroll_mode)
+        self.ctrl_panel.play_line_changed.connect(self.view.waterfall.set_play_line)
         self.song_info_panel.speed_changed.connect(self.scroller.set_scroll_speed)
         self.song_info_panel.zoom_changed.connect(self.view.waterfall.set_zoom)
         self.song_info_panel.transpose_changed.connect(self.on_transpose_changed)

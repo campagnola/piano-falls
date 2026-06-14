@@ -2,6 +2,9 @@ from .qt import QtCore, QtGui, QtWidgets, GraphicsItemGroup, Pen, Brush, Color
 from .song import Song
 from .notes_item import NotesItem
 
+# Scene units per second at zoom=1. Used to convert between time and scene coordinates.
+_PIXELS_PER_SECOND = 6
+
 
 class Waterfall(QtWidgets.QGraphicsWidget):
     def __init__(self, display_model):
@@ -18,6 +21,17 @@ class Waterfall(QtWidgets.QGraphicsWidget):
         self.current_time = 0.0
         self.requested_time = 0.0
         self.zoom_factor = 1.0
+        # Vertical offset of the play line from the bottom, in seconds at zoom=1.
+        # Notes at current_time appear at this visual position rather than at the bottom.
+        self.play_line_seconds = 0.0
+
+        # Horizontal line marking where notes should be played.
+        # Drawn in widget-local coordinates (not subject to the note transform).
+        play_line_pen = Pen((55, 55, 55, 200))
+        play_line_pen.setWidthF(1.5)
+        self.play_line_item = QtWidgets.QGraphicsLineItem(0, 0, 88, 0, self)
+        self.play_line_item.setPen(play_line_pen)
+        self.play_line_item.setZValue(10)
 
         # limit the update rate to 60 fps
         self.update_timer = QtCore.QTimer()
@@ -43,12 +57,24 @@ class Waterfall(QtWidgets.QGraphicsWidget):
         self.zoom_factor = factor
         self.update_transform()
 
+    def set_play_line(self, seconds: float):
+        """Set the play line offset from the bottom, in seconds at zoom=1."""
+        self.play_line_seconds = seconds
+        self.update_transform()
+
     def update_transform(self):
+        # The play line sits at a fixed pixel distance from the bottom regardless of zoom.
+        # play_line_seconds * _PIXELS_PER_SECOND converts to scene units at zoom=1.
+        play_line_scene_y = self.play_line_seconds * _PIXELS_PER_SECOND
+        base_y = self.geometry().height() - play_line_scene_y
+
         transform = QtGui.QTransform()
-        transform.translate(0, self.geometry().height())
-        transform.scale(1, -6 * self.zoom_factor)
+        transform.translate(0, base_y)
+        transform.scale(1, -_PIXELS_PER_SECOND * self.zoom_factor)
         transform.translate(0, -self.current_time)
         self.group.setTransform(transform)
+
+        self.play_line_item.setPos(0, base_y)
 
     def set_loops(self, loops):
         """Update the display to show active loop regions as horizontal bands."""
@@ -84,6 +110,6 @@ class Waterfall(QtWidgets.QGraphicsWidget):
                 self._loop_items.append(line)
 
     def resizeEvent(self, event):
-        self.set_time(self.current_time)
+        self.update_transform()
 
 

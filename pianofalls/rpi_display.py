@@ -121,6 +121,9 @@ class RPiRenderer:
         self.display_model = mainwindow.display_model
         self.current_time = 0
         self.zoom = 1
+        # Vertical offset of the play line from the bottom, in seconds at zoom=1.
+        # Mirrors the same setting used by the Qt Waterfall.
+        self.play_line_seconds = 0.0
         self.time_range = (0, 1)
         self.sender = sender
         self.need_update = True  # Start dirty to render initial frame
@@ -141,13 +144,21 @@ class RPiRenderer:
 
     def set_time(self, time):
         self.current_time = time
-        new_time_range = (time, time + 3 / self.zoom)
+        # Shift the visible window so the play line sits at current_time.
+        # play_line_seconds / zoom seconds of past content appear below the play line.
+        play_line_offset = self.play_line_seconds / self.zoom
+        new_time_range = (time - play_line_offset, time - play_line_offset + 3 / self.zoom)
         if new_time_range != self.time_range:
             self.time_range = new_time_range
             self.update()
 
     def set_zoom(self, zoom):
         self.zoom = zoom
+        self.set_time(self.current_time)
+
+    def set_play_line(self, seconds: float):
+        """Set the play line offset from the bottom, in seconds at zoom=1."""
+        self.play_line_seconds = seconds
         self.set_time(self.current_time)
 
     def set_time_range(self, time_range):
@@ -194,6 +205,14 @@ class RPiRenderer:
             # Get played state from the source event (not cached in DisplayEvent)
             if not display_evt.event.played:
                 draw_interpolated_line(frame, start_y_pixel-1, x1, x2, np.array([255, 255, 255]))
+
+        # Draw the play line. The visible range spans 3/zoom seconds; the play line
+        # sits at play_line_seconds/3 of total height from the bottom, independent of zoom.
+        play_line_row = int(round(rows * (1 - self.play_line_seconds / 3)))
+        if 0 <= play_line_row < rows:
+            frame[play_line_row, 0:frame.shape[1]] = np.clip(
+                frame[play_line_row, 0:frame.shape[1]].astype('int16') + 50, 0, 255
+            ).astype('uint8')
 
         return frame
 

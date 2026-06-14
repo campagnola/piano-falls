@@ -6,6 +6,7 @@ from .config import config
 class CtrlPanel(QtWidgets.QWidget):
     autoplay_volume_changed = QtCore.Signal(float)
     scroll_mode_changed = QtCore.Signal(str)
+    play_line_changed = QtCore.Signal(float)
 
     def __init__(self):
         super().__init__()
@@ -33,9 +34,18 @@ class CtrlPanel(QtWidgets.QWidget):
         self.scroll_mode_combo.addItem('Constant Tempo', 'tempo')
         self.layout.addWidget(self.scroll_mode_combo)
 
+        self.play_line_label = QtWidgets.QLabel('Play Line:')
+        self.play_line_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.layout.addWidget(self.play_line_label)
+        self.play_line_spin = QtWidgets.QDoubleSpinBox(
+            minimum=0.0, maximum=10.0, singleStep=0.25, value=0.0, suffix='s', decimals=1
+        )
+        self.layout.addWidget(self.play_line_spin)
+
         self.load_button.clicked.connect(self.on_load)
         self.autoplay_volume_spin.valueChanged.connect(self.on_autoplay_volume_changed)
         self.scroll_mode_combo.currentIndexChanged.connect(self.on_scroll_mode_changed)
+        self.play_line_spin.valueChanged.connect(self.on_play_line_changed)
 
     def load_config(self):
         scroll_mode = config.data.get('scroll_mode', 'wait')
@@ -50,6 +60,11 @@ class CtrlPanel(QtWidgets.QWidget):
         self.autoplay_volume_spin.setValue(autoplay_volume)
         # Ensure signal is emitted even if value doesn't change
         self.autoplay_volume_changed.emit(autoplay_volume / 100.0)
+
+        play_line_seconds = config.data.get('play_line_seconds', 0.0)
+        self.play_line_spin.setValue(play_line_seconds)
+        # Ensure signal is emitted even if value doesn't change
+        self.play_line_changed.emit(play_line_seconds)
 
     def on_load(self):
         mw = self.window()
@@ -69,3 +84,7 @@ class CtrlPanel(QtWidgets.QWidget):
         self.scroll_mode_changed.emit(scroll_mode)
         # Save to global config
         config['scroll_mode'] = scroll_mode
+
+    def on_play_line_changed(self, value):
+        self.play_line_changed.emit(value)
+        config['play_line_seconds'] = value

@@ -68,6 +68,8 @@ if __name__ == '__main__':
         sender = FrameSender(rpi['ip_address'], rpi['port'], udp=rpi.get('udp', False))
         renderer = RPiRenderer(w, sender)
         w.song_info_panel.zoom_changed.connect(renderer.set_zoom)
+        w.ctrl_panel.play_line_changed.connect(renderer.set_play_line)
+        renderer.set_play_line(w.ctrl_panel.play_line_spin.value())
         # watcher = GraphicsViewUpdateWatcher(w.view)
         # watcher.new_frame.connect(sender.send_frame)
 

@@ -17,6 +17,7 @@ default_config = {
     "autoplay_volume": 80,  # 0-100 percentage
     "autoplay_volume_randomness": 10,  # 0-100 percentage of volume variation
     "scroll_mode": "wait",  # 'wait' or 'tempo'
+    "play_line_seconds": 0.0,  # vertical offset of play line from bottom, in seconds at 100% zoom
 }
 
 default_song_config = {

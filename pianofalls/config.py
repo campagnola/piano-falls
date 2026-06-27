@@ -11,6 +11,7 @@ else:
 default_config = {
     "search_paths": ["~/Downloads"],
     "songs": [],
+    "tags": [],  # List of all available tag names
     "rpi_display": None,
         # {"ip_address": "10.10.10.10", "port": 1337, "udp": False,
         #  "resolution": [64, 512], "bounds": [10, 501]},
@@ -30,6 +31,7 @@ default_song_config = {
     "rating": 0,  # 0-10 scale, 0 = unrated
     "loops": [],
     "track_modes": [],  # List of [part_name, staff, mode] tuples
+    "tags": [],  # List of tag names applied to this song
 }
 
 
@@ -100,7 +102,19 @@ class Config:
 
         return settings
 
-    def update_song_settings(self, filename, speed=None, zoom=None, loops=None, transpose=None, track_modes=None, rating=None):
+    def get_all_tags(self):
+        """Return the sorted list of all available tag names."""
+        return self.data.get('tags', [])
+
+    def add_tag(self, tag_name):
+        """Add a tag to the global list if not already present, then save."""
+        tags = self.data.setdefault('tags', [])
+        if tag_name not in tags:
+            tags.append(tag_name)
+            tags.sort()
+            self.save()
+
+    def update_song_settings(self, filename, speed=None, zoom=None, loops=None, transpose=None, track_modes=None, rating=None, tags=None):
         """Update song settings by filename. Creates new entry if not found."""
         sha = self.get_sha(filename)
 
@@ -129,6 +143,8 @@ class Config:
             existing_song['track_modes'] = track_modes
         if rating is not None:
             existing_song['rating'] = rating
+        if tags is not None:
+            existing_song['tags'] = tags
 
         self.save()
 

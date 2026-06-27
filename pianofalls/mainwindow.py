@@ -6,6 +6,7 @@ from .view import View
 from .ctrl_panel import CtrlPanel
 from .scroller import TimeScroller
 from .file_tree import FileTree
+from .search_bar import SearchBar
 from .song_info_panel import SongInfoPanel
 from .song_info import SongInfo
 from .config import config
@@ -44,10 +45,8 @@ class MainWindow(QtWidgets.QWidget):
         file_tree_layout.setSpacing(2)
 
         # Add search bar
-        self.file_search = QtWidgets.QLineEdit()
-        self.file_search.setPlaceholderText('Search files...')
-        self.file_search.setClearButtonEnabled(True)
-        self.file_search.textChanged.connect(self._on_search_changed)
+        self.file_search = SearchBar()
+        self.file_search.search_changed.connect(self._on_search_changed)
         file_tree_layout.addWidget(self.file_search)
 
         # Add file tree

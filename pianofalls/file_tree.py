@@ -39,9 +39,44 @@ class FileTree(QtWidgets.QTreeWidget):
             self.file_double_clicked.emit(str(item.path))
 
     def on_item_clicked(self, item, column):
-        """Show rating widget when clicking column 1."""
-        if column == 1 and isinstance(item, FileTreeItem) and item.path.is_file():
+        """Show rating widget for column 1 or tag picker for column 3."""
+        if not isinstance(item, FileTreeItem) or not item.path.is_file():
+            return
+        if column == 1:
             self._show_rating_widget(item)
+        elif column == 3:
+            self._show_tag_widget(item)
+
+    def _show_tag_widget(self, item):
+        """Show tag picker popup for item."""
+        from .tag_widget import TagPickerWidget
+        from .song_info import SongInfo
+        from .config import config
+
+        try:
+            song_info = SongInfo.load(str(item.path), parent=self)
+            current_tags = song_info.get_setting('tags')
+        except Exception:
+            return
+
+        # Include any song tags that aren't in the global list yet
+        all_tags = list(config.get_all_tags())
+        all_tags_set = set(all_tags)
+        for tag in current_tags:
+            if tag not in all_tags_set:
+                all_tags.append(tag)
+
+        widget = TagPickerWidget(all_tags, current_tags, parent=self)
+
+        def on_tags_changed(new_tags):
+            song_info.update_settings(tags=new_tags)
+            item._update_tags_display()
+
+        widget.tags_changed.connect(on_tags_changed)
+
+        cursor_pos = QtGui.QCursor.pos()
+        widget.move(cursor_pos.x() + 10, cursor_pos.y() + 10)
+        widget.show()
 
     def _show_rating_widget(self, item):
         """Show rating popup for item."""
@@ -424,37 +459,83 @@ class FileTree(QtWidgets.QTreeWidget):
 
     def search(self, search_text):
         """
-        Filter the tree to show only items matching the search text.
+        Filter the tree to show only items matching the search query.
 
-        Uses os.walk() to find all matching files across the entire search paths,
-        then lazy-loads folders as needed and shows/hides items accordingly.
+        Accepts comma-separated tokens (see search_bar.parse_search_query for syntax).
+        Uses os.walk() to find candidate files, then applies metadata filters using
+        the config's stored song settings.
         """
-        search_text = search_text.strip().lower()
+        from .search_bar import parse_search_query
+        from .config import config
+
+        search_text = search_text.strip()
 
         if not search_text:
-            # Show all items
             for item in self._iter_items():
                 item.setHidden(False)
             return
 
-        # Step 1: Find all matching files using os.walk()
+        filters = parse_search_query(search_text)
+        has_text = bool(filters['text'])
+        has_rating = filters['rating_min'] is not None or filters['rating_max'] is not None
+        has_tags = bool(filters['tags'])
+
+        if not (has_text or has_rating or has_tags):
+            for item in self._iter_items():
+                item.setHidden(False)
+            return
+
+        # Build filename -> song settings dict for fast metadata lookup
+        filename_settings = {}
+        if has_rating or has_tags:
+            for song in config['songs']:
+                fn = song.get('filename')
+                if fn:
+                    filename_settings[fn] = song
+
+        # Find all matching files using os.walk()
         matching_paths = set()
         for i in range(self.topLevelItemCount()):
             root_item = self.topLevelItem(i)
             if isinstance(root_item, FileTreeItem) and root_item.path.is_dir():
                 for dirpath, dirnames, filenames in os.walk(root_item.path):
                     for filename in filenames:
-                        if filename.lower().endswith(('.mid', '.midi', '.mxl', '.xml', '.musicxml')):
-                            if search_text in filename.lower():
-                                file_path = pathlib.Path(dirpath) / filename
-                                matching_paths.add(file_path)
-                                # Add all parent directories to matching paths
-                                parent = file_path.parent
-                                while parent != root_item.path.parent:
-                                    matching_paths.add(parent)
-                                    parent = parent.parent
+                        if not filename.lower().endswith(('.mid', '.midi', '.mxl', '.xml', '.musicxml')):
+                            continue
 
-        # Step 2: Lazy-load and show/hide items
+                        # Text filter: all terms must appear in filename
+                        if has_text and any(term not in filename.lower() for term in filters['text']):
+                            continue
+
+                        file_path = pathlib.Path(dirpath) / filename
+
+                        # Metadata filters via config (no SHA computation needed)
+                        if has_rating or has_tags:
+                            settings = filename_settings.get(str(file_path), {})
+
+                            if has_rating:
+                                rating = settings.get('rating', 0)
+                                if filters['rating_min'] is not None and rating < filters['rating_min']:
+                                    continue
+                                if filters['rating_max'] is not None and rating > filters['rating_max']:
+                                    continue
+
+                            if has_tags:
+                                song_tags = settings.get('tags', [])
+                                full_lower = {t.lower() for t in song_tags}
+                                leaf_lower = {t.rsplit('/', 1)[-1].lower() for t in song_tags}
+                                all_tag_vals = full_lower | leaf_lower
+                                if not all(req in all_tag_vals for req in filters['tags']):
+                                    continue
+
+                        matching_paths.add(file_path)
+                        # Add all parent directories so the tree stays navigable
+                        parent = file_path.parent
+                        while parent != root_item.path.parent:
+                            matching_paths.add(parent)
+                            parent = parent.parent
+
+        # Lazy-load and show/hide items
         self._filter_tree(matching_paths)
 
     def _filter_tree(self, matching_paths):
@@ -503,8 +584,9 @@ class FileTreeItem(QtWidgets.QTreeWidgetItem):
             # Watch this directory for changes
             self.file_watcher.addPath(str(self.path))
         else:
-            # Update rating display for files
+            # Update rating and tags display for files
             self._update_rating_display()
+            self._update_tags_display()
         self.setFlags(flags)
         self.children_loaded = False
 
@@ -547,9 +629,10 @@ class FileTreeItem(QtWidgets.QTreeWidgetItem):
                 else:
                     item.path = child_path
                     item.setText(0, child_path.name)
-                    # Update rating when reloading
+                    # Update rating and tags when reloading
                     if child_path.is_file():
                         item._update_rating_display()
+                        item._update_tags_display()
 
         for index in reversed(range(self.childCount())):
             child = self.child(index)
@@ -595,3 +678,17 @@ class FileTreeItem(QtWidgets.QTreeWidgetItem):
         except Exception:
             # If file can't be loaded or isn't a valid song, leave blank
             self.setText(1, '')
+
+    def _update_tags_display(self):
+        """Update the tags column display based on song tags in config."""
+        if not self.path.is_file():
+            return
+        try:
+            from .song_info import SongInfo
+            song_info = SongInfo.load(str(self.path), parent=None)
+            tags = song_info.get_setting('tags')
+            # Show leaf part of each tag (after last "/") comma-separated
+            leaves = [t.rsplit('/', 1)[-1] for t in tags]
+            self.setText(3, ', '.join(leaves))
+        except Exception:
+            self.setText(3, '')

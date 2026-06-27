@@ -1,5 +1,7 @@
 import math, sys
 from qtpy import QtWidgets, QtGui, QtCore, QtTest
+from qtpy.QtCore import Signal, Qt
+from qtpy.QtWidgets import QAction
 
 
 # Needed to prevent abort when exceptions are raised in Qt slots

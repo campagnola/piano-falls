@@ -163,7 +163,7 @@ class ScrollMode:
         # Autoplay settings
         self.midi_output = None
         self.autoplay_volume = 1.0  # 0.0-1.0 scale factor
-        self.autoplay_volume_randomness = config.data.get('autoplay_volume_randomness', 10) / 100.0  # 0.0-1.0 scale
+        self.autoplay_volume_randomness = config['autoplay_volume_randomness'] / 100.0  # 0.0-1.0 scale
         self.active_autoplay_notes = {}  # Map note_id -> note object for fast lookup
 
         self.set_song(self.scroller.song)

@@ -11,7 +11,6 @@ import pathlib
 import json
 import glob
 from .config import config
-from .song_info import SongInfo
 
 
 class SongRepository:
@@ -57,6 +56,8 @@ class SongRepository:
         dict
             Dictionary mapping SHA to SongInfo for all loaded songs
         """
+        from .song_info import SongInfo
+
         # Clear existing cache
         self._song_cache = {}
 

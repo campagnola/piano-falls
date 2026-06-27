@@ -24,6 +24,7 @@ default_song_config = {
     "rating": 0,  # 0-10 scale, 0 = unrated
     "loops": [],
     "track_modes": [],  # List of [part_name, staff, mode] tuples
+    "tags": [],  # List of tag names applied to this song
 }
 
 
@@ -314,6 +315,10 @@ class SongInfo:
 
     # Settings management
 
+    def get_settings(self):
+        """Get a copy of all settings."""
+        return self._settings.copy()
+
     def get_setting(self, name):
         """Get a specific setting value."""
         return self._settings[name]
@@ -326,6 +331,11 @@ class SongInfo:
         self._settings.update(kwargs)
 
         self.save()
+
+    @property
+    def filename(self):
+        """Get the primary file path for this song."""
+        return self.known_files[0]
 
     @property
     def name(self):

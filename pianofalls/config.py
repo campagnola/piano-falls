@@ -12,7 +12,6 @@ else:
 
 default_config = {
     "search_paths": ["~/Downloads"],
-    "songs": [],
     "tags": [],  # List of all available tag names
     "rpi_display": None,
         # {"ip_address": "10.10.10.10", "port": 1337, "udp": False,
@@ -21,18 +20,6 @@ default_config = {
     "autoplay_volume_randomness": 10,  # 0-100 percentage of volume variation
     "scroll_mode": "wait",  # 'wait' or 'tempo'
     "play_line_seconds": 0.0,  # vertical offset of play line from bottom, in seconds at 100% zoom
-}
-
-default_song_config = {
-    "name": "",
-    "filename": "",
-    "sha": "",
-    "speed": 100.0,
-    "zoom": 1.0,
-    "transpose": 0,
-    "rating": 0,  # 0-10 scale, 0 = unrated
-    "loops": [],
-    "track_modes": [],  # List of [part_name, staff, mode] tuples
     "stale_threshold_days": 30,  # Days after which unused song metadata is considered stale
 }
 
@@ -49,7 +36,6 @@ class Config:
 
     def __init__(self, config_file):
         self.load(config_file)
-
 
     def load(self, config_file):
         config_file = pathlib.Path(config_file)
@@ -83,73 +69,22 @@ class Config:
 
     def __getitem__(self, key):
         return self._data[key]
-    
+
     def __setitem__(self, key, value):
-        self.data[key] = value
+        self._data[key] = value
         self.save()
-
-    def get_sha(self, filename):
-        data = open(filename, 'rb').read()
-        sha = hashlib.sha1()
-        sha.update(data)
-        return sha.hexdigest()
-
-    def get_song_settings(self, filename):
-        """Get song settings by filename. Returns default values merged with stored values."""
-        sha = self.get_sha(filename)
-        song_data = self.songs_by_sha.get(sha, {})
-
-        # Return default values merged with any stored values
-        settings = default_song_config.copy()
-        settings.update(song_data)
-
-        return settings
 
     def get_all_tags(self):
         """Return the sorted list of all available tag names."""
-        return self.data.get('tags', [])
+        return self._data.get('tags', [])
 
     def add_tag(self, tag_name):
         """Add a tag to the global list if not already present, then save."""
-        tags = self.data.setdefault('tags', [])
+        tags = self._data.setdefault('tags', [])
         if tag_name not in tags:
             tags.append(tag_name)
             tags.sort()
             self.save()
-
-    def update_song_settings(self, filename, speed=None, zoom=None, loops=None, transpose=None, track_modes=None, rating=None, tags=None):
-        """Update song settings by filename. Creates new entry if not found."""
-        sha = self.get_sha(filename)
-
-        # Use the existing songs_by_sha lookup instead of searching
-        existing_song = self.songs_by_sha.get(sha)
-
-        if existing_song is None:
-            # Create new entry
-            existing_song = default_song_config.copy()
-            existing_song['sha'] = sha
-            self.data.setdefault('songs', []).append(existing_song)
-            # Add to the lookup dictionary
-            self.songs_by_sha[sha] = existing_song
-
-        # Update filename and other specified fields
-        existing_song['filename'] = filename
-        if speed is not None:
-            existing_song['speed'] = speed
-        if zoom is not None:
-            existing_song['zoom'] = zoom
-        if loops is not None:
-            existing_song['loops'] = loops
-        if transpose is not None:
-            existing_song['transpose'] = transpose
-        if track_modes is not None:
-            existing_song['track_modes'] = track_modes
-        if rating is not None:
-            existing_song['rating'] = rating
-        if tags is not None:
-            existing_song['tags'] = tags
-
-        self.save()
 
 
 config = Config.get_config()

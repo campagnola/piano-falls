@@ -48,7 +48,7 @@ class CtrlPanel(QtWidgets.QWidget):
         self.play_line_spin.valueChanged.connect(self.on_play_line_changed)
 
     def load_config(self):
-        scroll_mode = config.data.get('scroll_mode', 'wait')
+        scroll_mode = config['scroll_mode']
         index = self.scroll_mode_combo.findData(scroll_mode)
         if index >= 0:
             self.scroll_mode_combo.setCurrentIndex(index)
@@ -56,12 +56,12 @@ class CtrlPanel(QtWidgets.QWidget):
         self.scroll_mode_changed.emit(scroll_mode)
 
         # Load autoplay volume after scroll mode is set
-        autoplay_volume = config.data.get('autoplay_volume', 80)
+        autoplay_volume = config['autoplay_volume']
         self.autoplay_volume_spin.setValue(autoplay_volume)
         # Ensure signal is emitted even if value doesn't change
         self.autoplay_volume_changed.emit(autoplay_volume / 100.0)
 
-        play_line_seconds = config.data.get('play_line_seconds', 0.0)
+        play_line_seconds = config['play_line_seconds']
         self.play_line_spin.setValue(play_line_seconds)
         # Ensure signal is emitted even if value doesn't change
         self.play_line_changed.emit(play_line_seconds)

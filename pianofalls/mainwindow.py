@@ -9,6 +9,7 @@ from .file_tree import FileTree
 from .search_bar import SearchBar
 from .song_info_panel import SongInfoPanel
 from .song_info import SongInfo
+from .song_repository import SongRepository
 from .config import config
 from .display_model import DisplayModel
 
@@ -108,7 +109,7 @@ class MainWindow(QtWidgets.QWidget):
             return
 
         # Create SongInfo (handles file loading, registration, etc.)
-        song_info = SongInfo.load(filename, parent=self)
+        song_info = SongRepository.get_instance().get_song_info(filename)
 
         # Get the Song instance
         song = song_info.get_song()

@@ -30,6 +30,7 @@ class FileTree(QtWidgets.QTreeWidget):
 
         self.file_manager = FileManager.get_instance()
         self.file_manager.file_changed.connect(self._on_file_changed)
+        self.file_watcher = self.file_manager.file_watcher
         self.song_repository = SongRepository.get_instance()
 
     def on_item_double_clicked(self, item, column):
@@ -52,7 +53,7 @@ class FileTree(QtWidgets.QTreeWidget):
         from .config import config
 
         try:
-            song_info = SongInfo.load(str(item.path), parent=self)
+            song_info = SongRepository.get_instance().get_song_info(str(item.path))
             current_tags = song_info.get_setting('tags')
         except Exception:
             return
@@ -429,10 +430,15 @@ class FileTree(QtWidgets.QTreeWidget):
         # Build filename -> song settings dict for fast metadata lookup
         filename_settings = {}
         if has_rating or has_tags:
-            for song in config['songs']:
-                fn = song.get('filename')
-                if fn:
-                    filename_settings[fn] = song
+            from .song_repository import SongRepository
+            song_repo = SongRepository.get_instance()
+            for sha, song_info in song_repo.load_all_songs().items():
+                settings = {
+                    'rating': song_info.get_setting('rating'),
+                    'tags': song_info.get_setting('tags'),
+                }
+                for fn in song_info.known_files:
+                    filename_settings[fn] = settings
 
         # Find all matching files using os.walk()
         matching_paths = set()
@@ -611,7 +617,7 @@ class FileTreeItem(QtWidgets.QTreeWidgetItem):
         try:
             from .song_info import SongInfo
             from .rating_widget import rating_to_stars
-            song_info = SongInfo.load(str(self.path), parent=None)
+            song_info = SongRepository.get_instance().get_song_info(str(self.path))
             rating = song_info.get_setting('rating')
             stars = rating_to_stars(rating)
             # Don't show stars for unrated files in the tree
@@ -626,7 +632,7 @@ class FileTreeItem(QtWidgets.QTreeWidgetItem):
             return
         try:
             from .song_info import SongInfo
-            song_info = SongInfo.load(str(self.path), parent=None)
+            song_info = SongRepository.get_instance().get_song_info(str(self.path))
             tags = song_info.get_setting('tags')
             # Show leaf part of each tag (after last "/") comma-separated
             leaves = [t.rsplit('/', 1)[-1] for t in tags]

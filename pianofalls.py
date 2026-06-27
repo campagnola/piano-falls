@@ -2,8 +2,9 @@ import sys
 from pianofalls.midi import MidiInput, MidiOutput
 from pianofalls.qt import QtWidgets
 from pianofalls.mainwindow import MainWindow
-from pianofalls.rpi_display import GraphicsViewUpdateWatcher, FrameSender, RPiRenderer
+from pianofalls.rpi_display import FrameSender, RPiRenderer
 from pianofalls.config import config
+from pianofalls.song_repository import SongRepository
 
 
 def excepthook(*args):
@@ -61,6 +62,10 @@ if __name__ == '__main__':
         midi_output = None
 
     app = QtWidgets.QApplication([])
+
+    # Initialize SongRepository singleton after Config is loaded
+    song_repository = SongRepository.get_instance()
+
     w = MainWindow()
 
     if config['rpi_display'] is not None:
